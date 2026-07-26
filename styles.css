@@ -293,6 +293,51 @@ h1 { margin: 0; font-size: 21px; }
 
 .selected p { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
 
+.guest-feedback {
+  margin: 10px 0 12px;
+  padding: 10px;
+  background: rgba(255, 255, 255, .48);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.feedback-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+.feedback-heading strong { font-size: 13px; }
+.feedback-heading span { color: var(--muted); font-size: 9px; }
+
+.guest-log { display: grid; gap: 5px; }
+.guest-log article {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 7px;
+  align-items: start;
+  padding: 6px;
+  background: rgba(38, 49, 63, .05);
+  border-left: 3px solid var(--teal);
+  border-radius: 5px;
+}
+.guest-log article.negative { border-left-color: var(--coral); }
+.guest-log article.positive { border-left-color: var(--green); }
+.guest-log b {
+  min-width: 48px;
+  color: var(--ink);
+  font-size: 9px;
+}
+.guest-log p,
+.empty-feedback {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
 .chart { display: grid; gap: 10px; margin: 12px 0; }
 .chart div {
   height: 36px;
@@ -317,6 +362,130 @@ h1 { margin: 0; font-size: 21px; }
   font-weight: 800;
 }
 
+.economy-panel {
+  margin: 12px 0;
+  padding: 10px;
+  background: rgba(255, 255, 255, .5);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.economy-heading,
+.economy-price-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.economy-heading { margin-bottom: 8px; }
+.economy-heading strong { font-size: 13px; }
+.economy-heading span { color: var(--green); font-size: 13px; font-weight: 900; }
+.economy-heading span.negative { color: var(--coral); }
+
+.economy-price-row {
+  min-height: 44px;
+  border-top: 1px solid rgba(45, 59, 70, .09);
+  border-bottom: 1px solid rgba(45, 59, 70, .09);
+}
+
+.economy-price-row > span b,
+.economy-price-row > span small { display: block; }
+.economy-price-row > span b { font-size: 12px; }
+.economy-price-row > span small { color: var(--muted); font-size: 10px; }
+
+.ledger-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  padding-top: 8px;
+}
+
+.ledger-grid span {
+  padding: 6px;
+  color: var(--muted);
+  background: rgba(38, 49, 63, .05);
+  border-radius: 6px;
+  font-size: 9px;
+}
+
+.ledger-grid b {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.inline-economy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+}
+
+.inline-economy > span { font-size: 11px; font-weight: 800; }
+.inline-economy .stepper { grid-template-columns: 28px 42px 28px; }
+.inline-economy button { min-width: 28px; min-height: 28px; }
+.inline-economy .restock-btn { min-width: 88px; padding: 0 10px; }
+
+.staff-panel {
+  margin: 12px 0;
+  padding: 10px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, .38);
+}
+
+.staff-heading,
+.staff-row,
+.maintenance-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.staff-heading { margin-bottom: 9px; }
+.staff-heading strong { font-size: 13px; }
+.staff-heading span { color: var(--coral); font-size: 11px; font-weight: 900; }
+
+.staff-row {
+  min-height: 42px;
+  border-top: 1px solid rgba(45, 59, 70, .09);
+}
+
+.staff-row > span b,
+.staff-row > span small { display: block; }
+.staff-row > span b { font-size: 12px; }
+.staff-row > span small { color: var(--muted); font-size: 10px; }
+
+.stepper {
+  display: grid;
+  grid-template-columns: 30px 28px 30px;
+  align-items: center;
+  gap: 3px;
+  text-align: center;
+}
+
+.stepper button {
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+}
+
+.stepper > b { font-size: 13px; }
+
+.maintenance-status {
+  padding-top: 8px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.maintenance-status b { color: var(--ink); }
+
 .primary {
   width: 100%;
   background: var(--coral);
@@ -327,7 +496,7 @@ h1 { margin: 0; font-size: 21px; }
 
 .save-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 44px 1fr;
   gap: 8px;
   margin-bottom: 12px;
 }
@@ -335,6 +504,13 @@ h1 { margin: 0; font-size: 21px; }
 .save-row button {
   min-height: 40px;
 }
+
+#undoBtn {
+  padding: 0;
+  font-size: 22px;
+}
+
+#undoBtn:disabled { opacity: .42; cursor: not-allowed; }
 
 details {
   border-top: 1px solid var(--line);

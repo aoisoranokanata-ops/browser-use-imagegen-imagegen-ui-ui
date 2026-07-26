@@ -94,14 +94,70 @@
         <strong>ウェルカム広場</strong>
         <p>ドラッグで移動、ホイールでズーム。タイルをクリックして建設します。ゲストはつながった通路を通ってライドへ向かいます。</p>
       </div>
+      <section class="guest-feedback" aria-label="ゲストの感想">
+        <div class="feedback-heading">
+          <strong>ゲストの声</strong>
+          <span id="guestMoodSummary">園内を観察中</span>
+        </div>
+        <div id="guestLog" class="guest-log">
+          <p class="empty-feedback">新しい感想を待っています</p>
+        </div>
+      </section>
       <div class="chart">
         <div><span>成長</span><b id="growthBar"></b></div>
         <div><span>ライド稼働</span><b id="loadBar"></b></div>
         <div><span>景観</span><b id="sceneBar"></b></div>
       </div>
+      <section class="economy-panel" aria-label="料金と収支">
+        <div class="economy-heading">
+          <strong>料金・運営収支</strong>
+          <span id="netTotal">+$0</span>
+        </div>
+        <div class="economy-price-row">
+          <span><b>入園料</b><small>高すぎると来園者が減少</small></span>
+          <div class="stepper">
+            <button id="admissionMinus" title="入園料を下げる">−</button>
+            <b id="admissionFee">$25</b>
+            <button id="admissionPlus" title="入園料を上げる">＋</button>
+          </div>
+        </div>
+        <div class="ledger-grid">
+          <span>入園料<b id="admissionRevenue">$0</b></span>
+          <span>ライド<b id="rideRevenue">$0</b></span>
+          <span>売店<b id="shopRevenue">$0</b></span>
+          <span>維持費・人件費<b id="expenseTotal">$0</b></span>
+        </div>
+      </section>
+      <section class="staff-panel" aria-label="スタッフ管理">
+        <div class="staff-heading">
+          <strong>スタッフ・維持費</strong>
+          <span id="runningCost">$0 / 精算</span>
+        </div>
+        <div class="staff-row">
+          <span><b>清掃員</b><small>清潔さを維持</small></span>
+          <div class="stepper">
+            <button id="cleanerMinus" title="清掃員を減らす">−</button>
+            <b id="cleanerCount">1</b>
+            <button id="cleanerPlus" title="清掃員を雇う">＋</button>
+          </div>
+        </div>
+        <div class="staff-row">
+          <span><b>整備員</b><small>ライドを整備</small></span>
+          <div class="stepper">
+            <button id="mechanicMinus" title="整備員を減らす">−</button>
+            <b id="mechanicCount">1</b>
+            <button id="mechanicPlus" title="整備員を雇う">＋</button>
+          </div>
+        </div>
+        <div class="maintenance-status">
+          <span>故障中 <b id="brokenCount">0</b></span>
+          <span>平均状態 <b id="conditionAverage">100%</b></span>
+        </div>
+      </section>
       <button id="roundBtn" class="primary">次のラウンドを開園</button>
       <div class="save-row">
         <button id="saveBtn" title="現在のパークを保存">セーブ</button>
+        <button id="undoBtn" aria-label="元に戻す" title="最後の建設操作を元に戻す">↶</button>
         <button id="loadBtn" title="保存したパークを読み込む">ロード</button>
       </div>
       <details>

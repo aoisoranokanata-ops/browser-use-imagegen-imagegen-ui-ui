@@ -16,7 +16,27 @@ const ui = {
   pauseBtn: document.getElementById("pauseBtn"),
   roundBtn: document.getElementById("roundBtn"),
   saveBtn: document.getElementById("saveBtn"),
+  undoBtn: document.getElementById("undoBtn"),
   loadBtn: document.getElementById("loadBtn"),
+  guestLog: document.getElementById("guestLog"),
+  guestMoodSummary: document.getElementById("guestMoodSummary"),
+  cleanerMinus: document.getElementById("cleanerMinus"),
+  cleanerPlus: document.getElementById("cleanerPlus"),
+  cleanerCount: document.getElementById("cleanerCount"),
+  mechanicMinus: document.getElementById("mechanicMinus"),
+  mechanicPlus: document.getElementById("mechanicPlus"),
+  mechanicCount: document.getElementById("mechanicCount"),
+  runningCost: document.getElementById("runningCost"),
+  brokenCount: document.getElementById("brokenCount"),
+  conditionAverage: document.getElementById("conditionAverage"),
+  admissionMinus: document.getElementById("admissionMinus"),
+  admissionPlus: document.getElementById("admissionPlus"),
+  admissionFee: document.getElementById("admissionFee"),
+  admissionRevenue: document.getElementById("admissionRevenue"),
+  rideRevenue: document.getElementById("rideRevenue"),
+  shopRevenue: document.getElementById("shopRevenue"),
+  expenseTotal: document.getElementById("expenseTotal"),
+  netTotal: document.getElementById("netTotal"),
   zoomInBtn: document.getElementById("zoomInBtn"),
   zoomOutBtn: document.getElementById("zoomOutBtn"),
   zoomResetBtn: document.getElementById("zoomResetBtn"),
@@ -28,16 +48,23 @@ const TILE_H = 36;
 const W = 28;
 const H = 28;
 const SAVE_KEY = "yumeshimaParkSaveV1";
+const GUEST_ARCHETYPES = {
+  family: { label: "子ども連れ", rideBias: { carousel: 12, teacups: 9, wheel: 4, coaster: -8 }, hungerRate: 1.15, fatigueRate: 1.05 },
+  thrill: { label: "絶叫好き", rideBias: { coaster: 18, wheel: 7, carousel: -5, teacups: -4 }, hungerRate: .9, fatigueRate: .85 },
+  scenic: { label: "景観重視", rideBias: { wheel: 9, carousel: 5, coaster: -2 }, hungerRate: .8, fatigueRate: .75 },
+  foodie: { label: "グルメ", rideBias: { carousel: 2, teacups: 2 }, hungerRate: 1.5, fatigueRate: .8 },
+  relaxed: { label: "のんびり", rideBias: { carousel: 7, wheel: 5, coaster: -7 }, hungerRate: .85, fatigueRate: .65 }
+};
 const tools = {
   inspect: { cost: 0, label: "調べる" },
   path: { cost: 80, label: "通路" },
   remove: { cost: 0, label: "撤去" },
   bus_stop: { cost: 650, label: "バス停", transit: true, scenery: 2 },
-  carousel: { cost: 1800, label: "メリーゴーランド", ride: true, cap: 7, duration: 9, appeal: 18, color: "#ef6f61" },
-  wheel: { cost: 3200, label: "観覧車", ride: true, cap: 10, duration: 13, appeal: 27, color: "#49abc2" },
-  coaster: { cost: 4800, label: "コースター", ride: true, cap: 12, duration: 10, appeal: 36, color: "#f1b84f" },
-  teacups: { cost: 1400, label: "ティーカップ", ride: true, cap: 6, duration: 7, appeal: 15, color: "#9bcf67" },
-  kiosk: { cost: 900, label: "スナック売店", shop: true },
+  carousel: { cost: 1800, label: "メリーゴーランド", ride: true, cap: 7, duration: 9, appeal: 18, upkeep: 18, defaultPrice: 7, color: "#ef6f61" },
+  wheel: { cost: 3200, label: "観覧車", ride: true, cap: 10, duration: 13, appeal: 27, upkeep: 28, defaultPrice: 10, color: "#49abc2" },
+  coaster: { cost: 4800, label: "コースター", ride: true, cap: 12, duration: 10, appeal: 36, upkeep: 45, defaultPrice: 14, color: "#f1b84f" },
+  teacups: { cost: 1400, label: "ティーカップ", ride: true, cap: 6, duration: 7, appeal: 15, upkeep: 14, defaultPrice: 6, color: "#9bcf67" },
+  kiosk: { cost: 900, label: "スナック売店", shop: true, defaultPrice: 8, maxStock: 30 },
   tree: { cost: 120, label: "木立", scenery: 4 },
   shrub: { cost: 80, label: "低木", scenery: 3 },
   flower: { cost: 100, label: "花壇", scenery: 5 },
@@ -59,16 +86,20 @@ const colors = {
 
 let dpr = 1;
 let camera = { x: 0, y: 0, zoom: 1 };
-let mouse = { x: 0, y: 0, down: false, moved: false, sx: 0, sy: 0, cx: 0, cy: 0 };
+let mouse = { x: 0, y: 0, down: false, moved: false, mode: null, sx: 0, sy: 0, cx: 0, cy: 0, lastTile: null, painted: 0, rangeStart: null, rangeEnd: null, historyBefore: null };
 let hovered = null;
+let selectedTile = null;
 let selectedTool = "inspect";
 let selectedHero = localStorage.getItem("parkHero") || "male";
 let paused = false;
 let last = performance.now();
 let spawnTimer = 0;
 let incomeTimer = 0;
+let expenseTimer = 0;
 let toastTimer = 0;
 let busDropTimer = 0;
+let guestSequence = 0;
+const undoStack = [];
 
 const state = {
   money: 18000,
@@ -77,15 +108,28 @@ const state = {
   day: 1,
   round: 1,
   guestsServed: 0,
+  sentiment: 0,
+  admissionFee: 25,
+  finance: {
+    admissionRevenue: 0,
+    rideRevenue: 0,
+    shopRevenue: 0,
+    maintenanceExpenses: 0,
+    staffExpenses: 0,
+    restockExpenses: 0
+  },
+  staff: { cleaners: 1, mechanics: 1 },
   tiles: [],
   guests: [],
   rides: [],
-  buses: []
+  buses: [],
+  guestLog: []
 };
 
 function makeTile(x, y) {
   const pond = x > 20 && y > 18 && x + y < 48;
-  return { x, y, terrain: pond ? "water" : "grass", object: null, path: false, litter: 0 };
+  const baseTerrain = pond ? "water" : "grass";
+  return { x, y, terrain: baseTerrain, baseTerrain, object: null, path: false, litter: 0 };
 }
 
 for (let y = 0; y < H; y++) {
@@ -111,12 +155,23 @@ function tileAt(x, y) {
 
 function placeStarterRide(x, y, type) {
   const tile = tileAt(x, y);
-  tile.object = { type, queue: [], riders: [], timer: 0, totalRides: 0 };
+  tile.object = {
+    type,
+    queue: [],
+    riders: [],
+    timer: 0,
+    totalRides: 0,
+    condition: 100,
+    broken: false,
+    price: tools[type].defaultPrice
+  };
   state.rides.push(tile.object);
 }
 
 function placeStarterObject(x, y, type) {
-  tileAt(x, y).object = { type };
+  tileAt(x, y).object = type === "kiosk"
+    ? { type, stock: tools.kiosk.maxStock, maxStock: tools.kiosk.maxStock, price: tools.kiosk.defaultPrice }
+    : { type };
 }
 
 function resize() {
@@ -190,11 +245,24 @@ function drawWorld() {
     if (tile.path) drawPathTrim(p.x, p.y);
     if (tile.terrain === "water") drawWater(p.x, p.y);
     if (tile.litter > 0.5) drawLitter(p.x, p.y, tile.litter);
-    if (hovered === tile) drawHover(p.x, p.y);
     if (tile.object) drawObject(tile, p);
+    if (isTileInRemovalRange(tile)) {
+      const valid = getPlacementStatus(tile, "remove").valid;
+      diamond(p.x, p.y, valid ? "rgba(239,111,97,.42)" : "rgba(120,128,136,.16)", valid ? "#d84f4f" : "rgba(38,49,63,.24)");
+    }
+    if (hovered === tile) drawPlacementPreview(tile, p);
   }
   drawBuses();
   drawGuests();
+}
+
+function isTileInRemovalRange(tile) {
+  if (!mouse.down || mouse.mode !== "range-remove" || !mouse.rangeStart || !mouse.rangeEnd) return false;
+  const minX = Math.min(mouse.rangeStart.x, mouse.rangeEnd.x);
+  const maxX = Math.max(mouse.rangeStart.x, mouse.rangeEnd.x);
+  const minY = Math.min(mouse.rangeStart.y, mouse.rangeEnd.y);
+  const maxY = Math.max(mouse.rangeStart.y, mouse.rangeEnd.y);
+  return tile.x >= minX && tile.x <= maxX && tile.y >= minY && tile.y <= maxY;
 }
 
 function drawPathTrim(x, y) {
@@ -219,8 +287,44 @@ function drawWater(x, y) {
   }
 }
 
-function drawHover(x, y) {
-  diamond(x, y, selectedTool === "remove" ? "rgba(239,111,97,.26)" : "rgba(255,255,255,.34)", "rgba(38,49,63,.52)");
+function drawPlacementPreview(tile, p) {
+  if (selectedTool === "inspect") {
+    diamond(p.x, p.y, "rgba(255,255,255,.28)", "rgba(38,49,63,.52)");
+    return;
+  }
+  const status = getPlacementStatus(tile, selectedTool);
+  if (selectedTool === "remove") {
+    diamond(p.x, p.y, status.valid ? "rgba(239,111,97,.34)" : "rgba(120,128,136,.18)", status.valid ? "#d84f4f" : "rgba(38,49,63,.32)");
+    return;
+  }
+  if (!status.valid) {
+    diamond(p.x, p.y, "rgba(239,111,97,.32)", "#d84f4f");
+    return;
+  }
+  if (selectedTool === "path") {
+    diamond(p.x, p.y, "rgba(244,221,176,.78)", "rgba(69,145,88,.9)");
+    drawPathTrim(p.x, p.y);
+    return;
+  }
+  if (selectedTool === "water") {
+    diamond(p.x, p.y, "rgba(89,185,200,.72)", "rgba(69,145,88,.9)");
+    drawWater(p.x, p.y);
+    return;
+  }
+  diamond(p.x, p.y, "rgba(99,184,107,.24)", "rgba(69,145,88,.9)");
+  const preview = {
+    type: selectedTool,
+    queue: [],
+    riders: [],
+    timer: 0,
+    totalRides: 0,
+    condition: 100,
+    broken: false
+  };
+  ctx.save();
+  ctx.globalAlpha = .52;
+  drawObject({ object: preview }, p);
+  ctx.restore();
 }
 
 function drawLitter(x, y, amount) {
@@ -233,7 +337,7 @@ function drawObject(tile, p) {
   const type = tile.object.type;
   if (tools[type]?.ride) drawRide(type, p, tile.object);
   if (type === "bus_stop") drawBusStop(p);
-  if (type === "kiosk") drawKiosk(p);
+  if (type === "kiosk") drawKiosk(p, tile.object);
   if (type === "tree") drawTree(p);
   if (type === "shrub") drawShrub(p);
   if (type === "flower") drawFlowerBed(p);
@@ -389,6 +493,7 @@ function drawRide(type, p, ride) {
     }
     drawFlag(0, -4 * z, "#f1b84f", 1);
   }
+  if (ride.broken) drawRideStatusBadge("故障", -31 * z, -64 * z, "#d84f4f");
   if (ride.queue.length) drawQueueBadge(ride.queue.length, -30 * z, -42 * z);
   ctx.restore();
 }
@@ -436,7 +541,7 @@ function drawCup(x, y, color) {
   ctx.fill();
 }
 
-function drawKiosk(p) {
+function drawKiosk(p, kiosk = {}) {
   const z = camera.zoom;
   ctx.save();
   ctx.translate(p.x, p.y + 18 * z);
@@ -454,6 +559,9 @@ function drawKiosk(p) {
   ctx.fillStyle = "#26313f";
   ctx.fillRect(4 * z, -2 * z, 8 * z, 12 * z);
   drawFlag(-24 * z, -14 * z, "#f1b84f", -1);
+  if (Number(kiosk.stock ?? tools.kiosk.maxStock) <= 0) {
+    drawRideStatusBadge("売切", -17 * z, -49 * z, "#d84f4f");
+  }
   ctx.restore();
 }
 
@@ -616,6 +724,16 @@ function drawQueueBadge(value, x, y) {
   ctx.fillText(value, x + 13 * camera.zoom, y + 13 * camera.zoom);
 }
 
+function drawRideStatusBadge(value, x, y, color) {
+  ctx.fillStyle = color;
+  roundRect(x, y, 34 * camera.zoom, 18 * camera.zoom, 7 * camera.zoom);
+  ctx.fill();
+  ctx.fillStyle = "#fff8df";
+  ctx.font = `bold ${9 * camera.zoom}px sans-serif`;
+  ctx.textAlign = "center";
+  ctx.fillText(value, x + 17 * camera.zoom, y + 13 * camera.zoom);
+}
+
 function drawGuests() {
   const sorted = [...state.guests].sort((a, b) => (a.pos.x + a.pos.y) - (b.pos.x + b.pos.y));
   for (let i = 0; i < sorted.length; i++) {
@@ -676,16 +794,64 @@ function drawGuest(x, y, guest, index) {
   ctx.beginPath();
   ctx.arc(x, y - 6 * z + bob, 5 * z, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = index % 3 === 0 ? "#f1b84f" : "#26313f";
+  ctx.fillStyle = guest.archetype === "thrill" || index % 3 === 0 ? "#f1b84f" : "#26313f";
   ctx.beginPath();
   ctx.ellipse(x, y - 10 * z + bob, 6 * z, 3 * z, 0, 0, Math.PI * 2);
   ctx.fill();
-  if (index % 4 === 0) {
+  if (guest.archetype === "foodie" || index % 4 === 0) {
     ctx.fillStyle = "#fff7df";
     ctx.beginPath();
     ctx.arc(x + 6 * z, y + 3 * z + bob, 3 * z, 0, Math.PI * 2);
     ctx.fill();
   }
+  if (guest.archetype === "family") {
+    ctx.fillStyle = "#26313f";
+    ctx.fillRect(x + 7 * z, y + 7 * z + bob, 3 * z, 7 * z);
+    ctx.fillStyle = "#9bcf67";
+    roundRect(x + 5 * z, y + 2 * z + bob, 7 * z, 8 * z, 3 * z);
+    ctx.fill();
+    ctx.fillStyle = "#ffd7a8";
+    ctx.beginPath();
+    ctx.arc(x + 8.5 * z, y - 1 * z + bob, 3.5 * z, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (guest.archetype === "scenic") {
+    ctx.fillStyle = "#26313f";
+    roundRect(x + 3 * z, y + 1 * z + bob, 6 * z, 5 * z, 1 * z);
+    ctx.fill();
+    ctx.fillStyle = "#80d5df";
+    ctx.beginPath();
+    ctx.arc(x + 6 * z, y + 3.5 * z + bob, 1.5 * z, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (guest.thoughtTimer > 0 && guest.thought) {
+    drawGuestBubble(x, y - 25 * z + bob, guest.thought.short, guest.thought.tone);
+  }
+}
+
+function drawGuestBubble(x, y, text, tone = "neutral") {
+  const z = camera.zoom;
+  const label = String(text).slice(0, 9);
+  ctx.save();
+  ctx.font = `bold ${9 * z}px sans-serif`;
+  ctx.textAlign = "center";
+  const width = Math.max(42 * z, ctx.measureText(label).width + 14 * z);
+  const height = 20 * z;
+  ctx.fillStyle = tone === "negative" ? "rgba(255,239,232,.96)" : tone === "positive" ? "rgba(238,250,225,.96)" : "rgba(255,252,242,.96)";
+  ctx.strokeStyle = tone === "negative" ? "#d84f4f" : tone === "positive" ? "#4c965c" : "rgba(38,49,63,.36)";
+  ctx.lineWidth = Math.max(1, z);
+  roundRect(x - width / 2, y - height, width, height, 5 * z);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x - 3 * z, y);
+  ctx.lineTo(x, y + 5 * z);
+  ctx.lineTo(x + 3 * z, y);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#26313f";
+  ctx.fillText(label, x, y - 6 * z);
+  ctx.restore();
 }
 
 function roundRect(x, y, w, h, r) {
@@ -705,9 +871,11 @@ function update(dt) {
   if (paused) return;
   spawnTimer += dt;
   incomeTimer += dt;
+  expenseTimer += dt;
   const attraction = state.rides.reduce((sum, r) => sum + tools[r.type].appeal, 0);
   const transitStops = busStops().length;
-  const interval = Math.max(.65, 3.6 - attraction / 42 - state.round * .08 - transitStops * .14);
+  const admissionPressure = Math.max(0, state.admissionFee - 25) * .045;
+  const interval = Math.max(.65, 3.6 - attraction / 42 - state.round * .08 - transitStops * .14 + admissionPressure);
   if (spawnTimer > interval && state.guests.length < 12 + state.round * 5) {
     spawnTimer = 0;
     spawnGuest();
@@ -717,12 +885,40 @@ function update(dt) {
   for (const guest of state.guests) updateGuest(guest, dt);
   if (incomeTimer > 3.2) {
     incomeTimer = 0;
-    const kiosks = state.tiles.filter(t => t.object?.type === "kiosk").length;
-    state.money += kiosks * Math.max(6, Math.floor(state.guests.length * 2.4));
-    state.clean = clamp(state.clean - state.guests.length * .06 + sceneryScore() * .015, 35, 100);
+    state.clean = clamp(
+      state.clean - state.guests.length * .075 + sceneryScore() * .002 + state.staff.cleaners * .65,
+      20,
+      100
+    );
+    let cleaningPower = state.staff.cleaners * 1.25;
+    for (const tile of state.tiles) {
+      if (cleaningPower <= 0) break;
+      const removed = Math.min(tile.litter, cleaningPower);
+      tile.litter -= removed;
+      cleaningPower -= removed;
+    }
+  }
+  if (expenseTimer > 8) {
+    expenseTimer = 0;
+    const costs = operatingCostBreakdown();
+    state.money -= costs.total;
+    state.finance.maintenanceExpenses += costs.maintenance + costs.transit;
+    state.finance.staffExpenses += costs.staff;
+    if (state.money < 0) state.sentiment = clamp(state.sentiment - 1.5, -20, 20);
   }
   state.guests = state.guests.filter(g => !g.done);
   computeStats();
+}
+
+function operatingCostBreakdown() {
+  const maintenance = state.rides.reduce((sum, ride) => sum + (tools[ride.type].upkeep || 0), 0);
+  const staff = state.staff.cleaners * 35 + state.staff.mechanics * 45;
+  const transit = busStops().length * 6;
+  return { maintenance, staff, transit, total: Math.round(maintenance + staff + transit) };
+}
+
+function operatingCost() {
+  return operatingCostBreakdown().total;
 }
 
 function updateBuses(dt) {
@@ -749,35 +945,92 @@ function spawnGuest() {
 }
 
 function spawnGuestAt(startTile) {
-  const goal = chooseRide();
+  const refusalChance = clamp((state.admissionFee - 20) * .014, 0, .72);
+  if (Math.random() < refusalChance) {
+    addGuestLog("来園希望", "入園料が高くて今日は見送った", "negative");
+    return false;
+  }
   const color = ["#ef6f61", "#49abc2", "#f1b84f", "#7acb72", "#8e6fb5"][Math.floor(Math.random() * 5)];
+  const archetypeKeys = Object.keys(GUEST_ARCHETYPES);
+  const archetype = archetypeKeys[Math.floor(Math.random() * archetypeKeys.length)];
+  const profile = GUEST_ARCHETYPES[archetype];
   const guest = {
+    id: ++guestSequence,
     pos: { x: startTile.x, y: startTile.y },
     tile: startTile,
     path: [],
-    speed: .95 + Math.random() * .35,
-    goal,
+    baseSpeed: (archetype === "family" ? .82 : .95) + Math.random() * .28,
+    goal: null,
+    goalType: "ride",
     state: "walking",
-    patience: 22 + Math.random() * 18,
+    patience: (archetype === "family" ? 18 : 22) + Math.random() * 18,
     color,
-    spent: false
+    archetype,
+    profile,
+    spent: false,
+    budget: (archetype === "family" ? 48 : 28) + Math.random() * 54,
+    priceSensitivity: .65 + Math.random() * .8,
+    hunger: (archetype === "foodie" ? 52 : 24) + Math.random() * 18,
+    fatigue: Math.random() * 18,
+    satisfaction: 72,
+    thought: null,
+    thoughtTimer: 0,
+    thoughtCooldown: 1 + Math.random() * 3
   };
+  guest.goal = chooseRide(guest);
+  const goal = guest.goal;
   guest.path = goal ? findPath(startTile, nearestPath(goal)) : [];
+  if (!goal) guestThought(guest, "遊べるライドへ行けない", "遊具へ行けない", "negative", true);
+  state.money += state.admissionFee;
+  state.finance.admissionRevenue += state.admissionFee;
   state.guests.push(guest);
+  return true;
 }
 
-function chooseRide() {
+function chooseRide(guest = null) {
+  const origin = guest?.tile || entrance;
   const reachable = state.rides.filter(ride => {
     const pathTile = nearestPath(ride);
-    return pathTile && findPath(entrance, pathTile).length;
+    const price = Number(ride.price ?? tools[ride.type].defaultPrice);
+    return !ride.broken && price <= Number(guest?.budget ?? Infinity)
+      && pathTile && (pathTile === origin || findPath(origin, pathTile).length);
   });
   if (!reachable.length) return null;
   const sorted = reachable.sort((a, b) => {
-    const scoreA = tools[a.type].appeal - a.queue.length * 4;
-    const scoreB = tools[b.type].appeal - b.queue.length * 4;
+    const sensitivity = guest?.priceSensitivity || 1;
+    const profile = guest?.profile || { rideBias: {} };
+    const score = ride => tools[ride.type].appeal
+      + Number(profile.rideBias?.[ride.type] || 0)
+      + (guest?.archetype === "scenic" ? localSceneryScore(ride) * 1.2 : 0)
+      - ride.queue.length * (guest?.archetype === "family" ? 5.5 : 4)
+      - Number(ride.price ?? tools[ride.type].defaultPrice) * sensitivity
+      - Number(guest?.fatigue || 0) * tools[ride.type].duration * .006
+      - Number(guest?.hunger || 0) * .035;
+    const scoreA = score(a);
+    const scoreB = score(b);
     return scoreB - scoreA;
   });
   return sorted[Math.floor(Math.random() * Math.min(3, sorted.length))];
+}
+
+function localSceneryScore(object) {
+  const origin = state.tiles.find(tile => tile.object === object);
+  if (!origin) return 0;
+  return state.tiles.reduce((sum, tile) => {
+    const distance = Math.abs(tile.x - origin.x) + Math.abs(tile.y - origin.y);
+    return distance <= 3 ? sum + (tools[tile.object?.type]?.scenery || 0) + (tile.terrain === "water" ? 1 : 0) : sum;
+  }, 0);
+}
+
+function chooseShop(guest) {
+  const choices = state.tiles
+    .filter(tile => tools[tile.object?.type]?.shop && Number(tile.object.stock ?? 0) > 0)
+    .map(tile => ({ tile, pathTile: nearestPathForTile(tile) }))
+    .filter(choice => choice.pathTile && (choice.pathTile === guest.tile || findPath(guest.tile, choice.pathTile).length));
+  choices.sort((a, b) =>
+    Math.abs(a.tile.x - guest.tile.x) + Math.abs(a.tile.y - guest.tile.y)
+    - Math.abs(b.tile.x - guest.tile.x) - Math.abs(b.tile.y - guest.tile.y));
+  return choices[0] || null;
 }
 
 function nearestPath(ride) {
@@ -787,20 +1040,59 @@ function nearestPath(ride) {
 }
 
 function updateGuest(g, dt) {
+  const profile = g.profile || GUEST_ARCHETYPES[g.archetype] || GUEST_ARCHETYPES.relaxed;
+  g.thoughtTimer = Math.max(0, Number(g.thoughtTimer || 0) - dt);
+  g.thoughtCooldown = Math.max(0, Number(g.thoughtCooldown || 0) - dt);
+  g.hunger = clamp(Number(g.hunger || 0) + dt * profile.hungerRate, 0, 100);
+  g.fatigue = clamp(Number(g.fatigue || 0) + dt * profile.fatigueRate * (g.state === "queued" ? 1.35 : 1), 0, 100);
+
   if (g.state === "queued" || g.state === "riding") {
     g.patience -= dt;
     if (g.state === "queued" && g.patience < 0) {
       const i = g.goal.queue.indexOf(g);
       if (i >= 0) g.goal.queue.splice(i, 1);
-      state.happy -= 3;
+      state.sentiment = clamp(state.sentiment - 3, -20, 20);
+      g.satisfaction -= g.archetype === "family" ? 12 : 9;
+      guestThought(g, "待ち時間が長すぎて疲れた", "待ち時間が長い", "negative", true);
       g.path = findPath(g.tile, entrance);
       g.state = "leaving";
     }
     return;
   }
+
+  if (g.fatigue >= 94 && g.state !== "leaving") {
+    g.state = "leaving";
+    g.goal = null;
+    g.goalType = null;
+    g.path = findPath(g.tile, entrance);
+    g.satisfaction -= 8;
+    guestThought(g, "疲れたので休める場所がほしい", "休憩したい", "negative", true);
+  }
+
+  if (g.state === "walking" && g.goalType !== "shop" && !g.spent && g.hunger >= 66) {
+    const choice = chooseShop(g);
+    if (choice) {
+      g.goal = choice.tile.object;
+      g.goalType = "shop";
+      g.path = findPath(g.tile, choice.pathTile);
+      guestThought(g, "おなかが空いたので売店へ行こう", "売店へ行こう", "neutral");
+    } else if (g.hunger >= 80) {
+      guestThought(g, "食べ物を買える売店が見つからない", "売店がない", "negative");
+      g.satisfaction -= dt * .15;
+    }
+  }
+
   if (!g.path.length) {
     if (g.state === "leaving") { g.done = true; return; }
-    if (g.goal) {
+    if (g.goalType === "shop" && g.goal) {
+      buyFromShop(g, g.goal);
+      routeGuestToRideOrExit(g);
+    } else if (g.goal) {
+      if (g.goal.broken) {
+        guestThought(g, "目当てのライドが故障している", "故障している", "negative", true);
+        routeGuestToRideOrExit(g);
+        return;
+      }
       g.goal.queue.push(g);
       g.state = "queued";
       g.tile.litter += Math.random() * .4;
@@ -814,7 +1106,8 @@ function updateGuest(g, dt) {
   const dx = next.x - g.pos.x;
   const dy = next.y - g.pos.y;
   const dist = Math.hypot(dx, dy);
-  const step = g.speed * dt;
+  const speed = g.baseSpeed * clamp(1 - g.fatigue * .0045, .52, 1);
+  const step = speed * dt;
   if (dist <= step) {
     g.pos.x = next.x;
     g.pos.y = next.y;
@@ -824,31 +1117,136 @@ function updateGuest(g, dt) {
     g.pos.x += dx / dist * step;
     g.pos.y += dy / dist * step;
   }
-  if (!g.spent && Math.random() < .003) {
-    const nearShop = neighbors(g.tile).some(t => t.object?.type === "kiosk");
-    if (nearShop) {
-      g.spent = true;
-      state.money += 24;
-      state.happy += .18;
-    }
+  if (!g.spent && g.hunger >= 48 && Math.random() < .003) {
+    const shop = neighbors(g.tile).find(t => t.object?.type === "kiosk")?.object;
+    if (shop) buyFromShop(g, shop);
+  }
+  if (g.archetype === "scenic" && localTileScenery(g.tile) < 5) {
+    if (guestThought(g, "この辺りにもっと緑や花がほしい", "景色が寂しい", "negative")) g.satisfaction -= 4;
+  }
+  if (g.archetype === "family" && state.clean < 64) {
+    if (guestThought(g, "子どもと歩くには通路が汚れている", "通路が汚い", "negative")) g.satisfaction -= 5;
+  }
+}
+
+function localTileScenery(origin) {
+  return state.tiles.reduce((sum, tile) => {
+    const distance = Math.abs(tile.x - origin.x) + Math.abs(tile.y - origin.y);
+    return distance <= 2 ? sum + (tools[tile.object?.type]?.scenery || 0) + (tile.terrain === "water" ? 1 : 0) : sum;
+  }, 0);
+}
+
+function buyFromShop(guest, shop) {
+  if (guest.spent) return false;
+  const stock = Number(shop.stock ?? 0);
+  const price = Number(shop.price ?? tools.kiosk.defaultPrice);
+  guest.spent = true;
+  if (stock <= 0) {
+    guest.satisfaction -= 7;
+    state.sentiment = clamp(state.sentiment - .3, -20, 20);
+    guestThought(guest, "売店の商品が売り切れていた", "売り切れだ", "negative", true);
+    return false;
+  }
+  if (price > guest.budget) {
+    guest.satisfaction -= 5;
+    guestThought(guest, "売店の商品が予算より高かった", "ちょっと高い", "negative", true);
+    return false;
+  }
+  shop.stock--;
+  guest.budget -= price;
+  guest.hunger = Math.max(8, guest.hunger - 58);
+  state.money += price;
+  state.finance.shopRevenue += price;
+  const value = clamp(.35 - Math.max(0, price - tools.kiosk.defaultPrice) * .06, -.25, .35);
+  state.sentiment = clamp(state.sentiment + value, -20, 20);
+  guest.satisfaction += value >= 0 ? 5 : -3;
+  guestThought(guest, value >= 0 ? "おいしくて値段もちょうどいい" : "おいしいけれど少し高い", value >= 0 ? "おいしい" : "少し高い", value >= 0 ? "positive" : "negative", true);
+  return true;
+}
+
+function routeGuestToRideOrExit(guest) {
+  const ride = chooseRide(guest);
+  guest.goal = ride;
+  guest.goalType = ride ? "ride" : null;
+  guest.state = ride ? "walking" : "leaving";
+  guest.path = ride ? findPath(guest.tile, nearestPath(ride)) : findPath(guest.tile, entrance);
+  if (!ride) {
+    guest.satisfaction -= 7;
+    guestThought(guest, "予算内で乗れるライドがない", "乗れる遊具がない", "negative");
   }
 }
 
 function updateRide(ride, dt) {
+  ride.condition = clamp(Number(ride.condition ?? 100), 0, 100);
+  ride.broken = !!ride.broken;
+  const mechanicShare = state.staff.mechanics / Math.max(1, state.rides.length);
+  if (ride.broken) {
+    ride.condition = clamp(ride.condition + dt * mechanicShare * 1.8, 0, 100);
+    if (ride.condition >= 55) ride.broken = false;
+    return;
+  }
+  const debtPenalty = state.money < 0 ? 1.8 : 1;
+  const wear = (.04 + (tools[ride.type].upkeep || 10) * .0015) * debtPenalty;
+  ride.condition = clamp(ride.condition - dt * wear / (1 + mechanicShare * .8), 0, 100);
+  const failureRisk = ride.condition < 45 ? (45 - ride.condition) * .00075 : 0;
+  if (ride.condition <= 10 || Math.random() < dt * failureRisk) {
+    ride.broken = true;
+    const rideTile = state.tiles.find(t => t.object === ride);
+    for (const guest of ride.riders) {
+      guest.state = "leaving";
+      guest.goal = null;
+      guest.goalType = null;
+      guest.tile = nearestPathForTile(rideTile) || entrance;
+      guest.pos = { x: guest.tile.x, y: guest.tile.y };
+      guest.path = findPath(guest.tile, entrance);
+      guest.satisfaction -= 15;
+      guestThought(guest, "乗っていたライドが故障した", "故障で中止", "negative", true);
+    }
+    for (const guest of ride.queue) guestThought(guest, "並んでいたライドが故障した", "故障した", "negative", true);
+    ride.riders = [];
+    state.sentiment = clamp(state.sentiment - 3, -20, 20);
+    return;
+  }
   ride.timer -= dt;
   if (ride.timer <= 0 && ride.riders.length) {
     for (const guest of ride.riders) {
-      guest.state = "leaving";
-      guest.path = findPath(guest.tile, entrance);
+      guest.state = "walking";
+      guest.path = [];
       guest.goal = null;
+      guest.goalType = null;
       guest.patience = 30;
       guest.tile.litter += Math.random() * .55;
       state.guestsServed++;
-      state.money += 115 + Math.floor(tools[ride.type].appeal * 2.2);
-      state.happy += 1.1;
+      const fairPrice = tools[ride.type].defaultPrice;
+      const value = clamp(1.5 - Math.max(0, ride.price - fairPrice) * .16, -.8, 1.5);
+      state.sentiment = clamp(
+        state.sentiment + value,
+        -20,
+        20
+      );
+      const preference = Number(guest.profile?.rideBias?.[ride.type] || 0);
+      guest.satisfaction = clamp(guest.satisfaction + value * 4 + preference * .25, 0, 100);
+      if (value < 0) guestThought(guest, "楽しかったけれど乗車料金が高い", "料金が高い", "negative", true);
+      else if (guest.archetype === "thrill" && ride.type === "coaster") guestThought(guest, "このコースターは最高にスリル満点", "最高の絶叫", "positive", true);
+      else if (guest.archetype === "scenic" && localSceneryScore(ride) >= 12) guestThought(guest, "ライドから見る景色がきれい", "景色がきれい", "positive", true);
+      else guestThought(guest, `${tools[ride.type].label}が楽しかった`, "楽しかった", "positive", true);
+
+      if (!guest.spent && guest.hunger >= 55) {
+        const shopChoice = chooseShop(guest);
+        if (shopChoice) {
+          guest.goal = shopChoice.tile.object;
+          guest.goalType = "shop";
+          guest.path = findPath(guest.tile, shopChoice.pathTile);
+        }
+      }
+      if (!guest.path.length) {
+        guest.state = "leaving";
+        guest.path = findPath(guest.tile, entrance);
+      }
     }
     ride.riders = [];
     ride.totalRides++;
+    ride.condition = clamp(ride.condition - .7 - tools[ride.type].upkeep * .018, 0, 100);
   }
   if (!ride.riders.length && ride.queue.length) {
     const cap = tools[ride.type].cap;
@@ -858,6 +1256,10 @@ function updateRide(ride, dt) {
       guest.state = "riding";
       guest.tile = rideTile;
       guest.pos = { x: rideTile.x, y: rideTile.y };
+      const price = Number(ride.price ?? tools[ride.type].defaultPrice);
+      guest.budget = Math.max(0, Number(guest.budget ?? 50) - price);
+      state.money += price;
+      state.finance.rideRevenue += price;
     }
     ride.timer = tools[ride.type].duration;
   }
@@ -934,6 +1336,13 @@ function snapshotObject(object) {
   if (tools[object.type]?.ride) {
     saved.timer = object.timer || 0;
     saved.totalRides = object.totalRides || 0;
+    saved.condition = Number(object.condition ?? 100);
+    saved.broken = !!object.broken;
+    saved.price = Number(object.price ?? tools[object.type].defaultPrice);
+  } else if (tools[object.type]?.shop) {
+    saved.stock = Number(object.stock ?? tools.kiosk.maxStock);
+    saved.maxStock = Number(object.maxStock ?? tools.kiosk.maxStock);
+    saved.price = Number(object.price ?? tools.kiosk.defaultPrice);
   }
   return saved;
 }
@@ -946,7 +1355,19 @@ function restoreObject(saved) {
       queue: [],
       riders: [],
       timer: saved.timer || 0,
-      totalRides: saved.totalRides || 0
+      totalRides: saved.totalRides || 0,
+      condition: clamp(Number(saved.condition ?? 100), 0, 100),
+      broken: !!saved.broken,
+      price: clamp(Number(saved.price ?? tools[saved.type].defaultPrice), 0, 30)
+    };
+  }
+  if (tools[saved.type].shop) {
+    const maxStock = Math.max(1, Number(saved.maxStock ?? tools.kiosk.maxStock));
+    return {
+      type: saved.type,
+      stock: clamp(Number(saved.stock ?? maxStock), 0, maxStock),
+      maxStock,
+      price: clamp(Number(saved.price ?? tools.kiosk.defaultPrice), 1, 20)
     };
   }
   return { type: saved.type };
@@ -969,6 +1390,11 @@ function saveGame() {
     day: state.day,
     round: state.round,
     guestsServed: state.guestsServed,
+    sentiment: state.sentiment,
+    admissionFee: state.admissionFee,
+    finance: { ...state.finance },
+    guestLog: state.guestLog,
+    staff: { ...state.staff },
     tiles: state.tiles.map(tile => ({
       terrain: tile.terrain,
       path: tile.path,
@@ -998,11 +1424,34 @@ function loadGame() {
     state.day = Math.max(1, Number(save.day) || 1);
     state.round = Math.max(1, Number(save.round) || 1);
     state.guestsServed = Math.max(0, Number(save.guestsServed) || 0);
+    state.sentiment = clamp(Number(save.sentiment) || 0, -20, 20);
+    state.admissionFee = clamp(Number(save.admissionFee ?? 25), 0, 75);
+    state.finance = {
+      admissionRevenue: Math.max(0, Number(save.finance?.admissionRevenue) || 0),
+      rideRevenue: Math.max(0, Number(save.finance?.rideRevenue) || 0),
+      shopRevenue: Math.max(0, Number(save.finance?.shopRevenue) || 0),
+      maintenanceExpenses: Math.max(0, Number(save.finance?.maintenanceExpenses) || 0),
+      staffExpenses: Math.max(0, Number(save.finance?.staffExpenses) || 0),
+      restockExpenses: Math.max(0, Number(save.finance?.restockExpenses) || 0)
+    };
+    state.guestLog = Array.isArray(save.guestLog)
+      ? save.guestLog.slice(0, 6).map(entry => ({
+        label: String(entry.label || "ゲスト"),
+        message: String(entry.message || ""),
+        tone: ["positive", "negative", "neutral"].includes(entry.tone) ? entry.tone : "neutral",
+        day: Math.max(1, Number(entry.day) || 1)
+      }))
+      : [];
+    state.staff = {
+      cleaners: clamp(Number(save.staff?.cleaners ?? 1), 0, 12),
+      mechanics: clamp(Number(save.staff?.mechanics ?? 1), 0, 12)
+    };
     state.guests = [];
     state.buses = [];
     busDropTimer = 0;
     spawnTimer = 0;
     incomeTimer = 0;
+    expenseTimer = 0;
     save.tiles.forEach((savedTile, index) => {
       const tile = state.tiles[index];
       tile.terrain = savedTile.terrain === "water" ? "water" : "grass";
@@ -1011,8 +1460,11 @@ function loadGame() {
       tile.object = restoreObject(savedTile.object);
     });
     rebuildRideList();
+    undoStack.length = 0;
+    updateUndoButton();
     if (save.selectedHero) applyHeroSelection(save.selectedHero, true);
     inspect(entrance);
+    renderGuestLog();
     computeStats();
     toast("パークをロードしました");
   } catch {
@@ -1023,66 +1475,233 @@ function loadGame() {
 function computeStats() {
   const queue = state.rides.reduce((sum, r) => sum + r.queue.length, 0);
   const rides = state.rides.length;
+  const broken = state.rides.filter(ride => ride.broken).length;
+  const averageCondition = rides
+    ? state.rides.reduce((sum, ride) => sum + Number(ride.condition ?? 100), 0) / rides
+    : 100;
   const scene = sceneryScore();
   const transit = busStops().length;
   const served = state.guestsServed;
-  const joy = 45 + rides * 4 + scene * .18 + transit * 1.6 + served * .04 + state.clean * .12 - queue * 1.8;
+  const averageGuestSatisfaction = state.guests.length
+    ? state.guests.reduce((sum, guest) => sum + clamp(Number(guest.satisfaction ?? 72), 0, 100), 0) / state.guests.length
+    : 72;
+  const admissionPenalty = Math.max(0, state.admissionFee - 25) * .45;
+  const debtPenalty = state.money < 0 ? 8 : 0;
+  const joy = 44 + rides * 4 + scene * .18 + transit * 1.6 + served * .04 + state.clean * .12
+    + state.staff.cleaners * .7 + state.staff.mechanics * .45 + state.sentiment + (averageGuestSatisfaction - 72) * .18
+    - queue * 1.8 - broken * 6 - admissionPenalty - debtPenalty;
   state.happy = clamp(joy, 18, 100);
+  const revenue = state.finance.admissionRevenue + state.finance.rideRevenue + state.finance.shopRevenue;
+  const expenses = state.finance.maintenanceExpenses + state.finance.staffExpenses + state.finance.restockExpenses;
+  const net = revenue - expenses;
   ui.money.textContent = `$${Math.round(state.money).toLocaleString()}`;
   ui.happy.textContent = `${Math.round(state.happy)}%`;
   ui.clean.textContent = `${Math.round(state.clean)}%`;
   ui.queue.textContent = queue;
   ui.guests.textContent = state.guests.length;
+  const hungryGuests = state.guests.filter(guest => guest.hunger >= 66).length;
+  const tiredGuests = state.guests.filter(guest => guest.fatigue >= 72).length;
+  ui.guestMoodSummary.textContent = hungryGuests
+    ? `空腹 ${hungryGuests}人`
+    : tiredGuests
+      ? `疲労 ${tiredGuests}人`
+      : state.guests.length
+        ? `平均満足 ${Math.round(averageGuestSatisfaction)}%`
+        : "園内を観察中";
   ui.day.textContent = state.day;
   ui.round.textContent = state.round;
+  ui.cleanerCount.textContent = state.staff.cleaners;
+  ui.mechanicCount.textContent = state.staff.mechanics;
+  ui.runningCost.textContent = `$${operatingCost().toLocaleString()} / 精算`;
+  ui.admissionFee.textContent = `$${state.admissionFee}`;
+  ui.admissionRevenue.textContent = `$${Math.round(state.finance.admissionRevenue).toLocaleString()}`;
+  ui.rideRevenue.textContent = `$${Math.round(state.finance.rideRevenue).toLocaleString()}`;
+  ui.shopRevenue.textContent = `$${Math.round(state.finance.shopRevenue).toLocaleString()}`;
+  ui.expenseTotal.textContent = `$${Math.round(expenses).toLocaleString()}`;
+  ui.netTotal.textContent = `${net >= 0 ? "+" : "-"}$${Math.abs(Math.round(net)).toLocaleString()}`;
+  ui.netTotal.classList.toggle("negative", net < 0);
+  ui.brokenCount.textContent = broken;
+  ui.conditionAverage.textContent = `${Math.round(averageCondition)}%`;
   ui.growthBar.style.width = `${clamp((rides * 16 + transit * 7 + served * .22), 4, 100)}%`;
   ui.loadBar.style.width = `${clamp(queue * 8 + state.guests.length * 2, 5, 100)}%`;
   ui.sceneBar.style.width = `${clamp(scene * 2, 7, 100)}%`;
 }
 
-function build(tile) {
-  if (!tile) return;
-  if (selectedTool === "inspect") return inspect(tile);
+function getPlacementStatus(tile, toolName = selectedTool) {
+  if (!tile) return { valid: false, reason: "マップ外です" };
+  if (toolName === "inspect") return { valid: true };
+  if (toolName === "remove") {
+    const removable = !!tile.object || (tile.path && tile !== entrance) || tile.terrain !== tile.baseTerrain;
+    return { valid: removable, reason: removable ? "" : "撤去できる物がありません" };
+  }
+  const tool = tools[toolName];
+  if (!tool) return { valid: false, reason: "未対応のツールです" };
+  if (state.money < tool.cost) return { valid: false, reason: "資金が足りません" };
+  if (toolName === "path") {
+    const valid = tile.terrain !== "water" && !tile.object && !tile.path;
+    return { valid, reason: valid ? "" : "通路には空いた土地が必要です" };
+  }
+  if (toolName === "bus_stop") {
+    const clear = !tile.object && !tile.path && tile.terrain !== "water";
+    if (!clear) return { valid: false, reason: "バス停には空いた芝生が必要です" };
+    const connected = !!nearestPathForTile(tile);
+    return { valid: connected, reason: connected ? "" : "バス停は通路の隣に置いてください" };
+  }
+  if (toolName === "water") {
+    const valid = !tile.object && !tile.path && tile.terrain !== "water";
+    return { valid, reason: valid ? "" : "水辺には空いた土地が必要です" };
+  }
+  const valid = !tile.object && !tile.path && tile.terrain !== "water";
+  return { valid, reason: valid ? "" : "空いた芝生に配置してください" };
+}
+
+function captureHistoryState() {
+  return {
+    money: state.money,
+    finance: { ...state.finance },
+    selectedTileIndex: selectedTile ? state.tiles.indexOf(selectedTile) : -1,
+    tiles: state.tiles.map(tile => ({
+      terrain: tile.terrain,
+      path: tile.path,
+      litter: tile.litter,
+      object: tile.object
+    })),
+    rides: state.rides.map(ride => ({
+      ride,
+      data: { ...ride, queue: [...ride.queue], riders: [...ride.riders] }
+    })),
+    guests: state.guests.map(guest => ({
+      guest,
+      data: { ...guest, pos: { ...guest.pos }, path: [...guest.path] }
+    }))
+  };
+}
+
+function pushUndo(snapshot) {
+  if (!snapshot) return;
+  undoStack.push(snapshot);
+  if (undoStack.length > 30) undoStack.shift();
+  updateUndoButton();
+}
+
+function updateUndoButton() {
+  ui.undoBtn.disabled = undoStack.length === 0;
+}
+
+function undoLastBuild() {
+  const snapshot = undoStack.pop();
+  if (!snapshot) {
+    toast("元に戻せる建設操作がありません");
+    return false;
+  }
+  state.money = snapshot.money;
+  state.finance = { ...snapshot.finance };
+  snapshot.rides.forEach(({ ride, data }) => Object.assign(ride, data, { queue: [...data.queue], riders: [...data.riders] }));
+  snapshot.guests.forEach(({ guest, data }) => Object.assign(guest, data, { pos: { ...data.pos }, path: [...data.path] }));
+  snapshot.tiles.forEach((saved, index) => Object.assign(state.tiles[index], saved));
+  state.rides = snapshot.rides.map(item => item.ride);
+  state.guests = snapshot.guests.map(item => item.guest);
+  selectedTile = snapshot.selectedTileIndex >= 0 ? state.tiles[snapshot.selectedTileIndex] : null;
+  inspect(selectedTile || entrance);
+  computeStats();
+  updateUndoButton();
+  toast("最後の建設操作を元に戻しました");
+  return true;
+}
+
+function build(tile, options = {}) {
+  if (!tile) return false;
+  if (selectedTool === "inspect") {
+    if (!options.silent) inspect(tile);
+    return true;
+  }
+  const status = getPlacementStatus(tile, selectedTool);
+  if (!status.valid) {
+    if (!options.silent) toast(status.reason);
+    return false;
+  }
+  const historyBefore = options.recordHistory === false ? null : captureHistoryState();
   if (selectedTool === "remove") {
     if (tile.object) {
-      if (tools[tile.object.type]?.ride) state.rides = state.rides.filter(r => r !== tile.object);
+      if (tools[tile.object.type]?.ride) {
+        const removedRide = tile.object;
+        for (const guest of [...removedRide.queue, ...removedRide.riders]) {
+          guest.state = "leaving";
+          guest.goal = null;
+          guest.tile = nearestPathForTile(tile) || entrance;
+          guest.pos = { x: guest.tile.x, y: guest.tile.y };
+          guest.path = findPath(guest.tile, entrance);
+        }
+        state.rides = state.rides.filter(ride => ride !== removedRide);
+      }
       tile.object = null;
       state.money += 60;
-      toast("オブジェクトを撤去しました");
-    } else if (tile.path && tile !== entrance) {
+    } else if (tile.path) {
       tile.path = false;
-      toast("通路を撤去しました");
+    } else {
+      tile.terrain = tile.baseTerrain;
     }
-    return;
+    pushUndo(historyBefore);
+    if (!options.silent) toast("撤去しました");
+    return true;
   }
   const tool = tools[selectedTool];
-  if (state.money < tool.cost) return toast("資金が足りません");
   if (selectedTool === "path") {
-    if (tile.terrain === "water" || tile.object || tile.path) return toast("通路には空いた土地が必要です");
     tile.path = true;
-  } else if (selectedTool === "bus_stop") {
-    if (tile.object || tile.path || tile.terrain === "water") return toast("バス停には通路に隣接した空き芝生が必要です");
-    if (!nearestPathForTile(tile)) return toast("バス停は通路の隣に置いてください");
-    tile.object = { type: selectedTool };
   } else if (selectedTool === "water") {
-    if (tile.object || tile.path) return toast("水辺には空いた土地が必要です");
     tile.terrain = "water";
-  } else if (["tree", "shrub", "flower", "palm", "decor"].includes(selectedTool)) {
-    if (tile.object || tile.path || tile.terrain === "water") return toast("景観アイテムには空いた芝生が必要です");
-    tile.object = { type: selectedTool };
+  } else if (tool.ride) {
+    tile.object = {
+      type: selectedTool,
+      queue: [],
+      riders: [],
+      timer: 0,
+      totalRides: 0,
+      condition: 100,
+      broken: false,
+      price: tool.defaultPrice
+    };
+    state.rides.push(tile.object);
+  } else if (tool.shop) {
+    tile.object = {
+      type: selectedTool,
+      stock: tool.maxStock,
+      maxStock: tool.maxStock,
+      price: tool.defaultPrice
+    };
   } else {
-    if (tile.object || tile.path || tile.terrain === "water") return toast("アトラクションには空いた芝生が必要です");
-    tile.object = { type: selectedTool, queue: [], riders: [], timer: 0, totalRides: 0 };
-    if (tool.ride) state.rides.push(tile.object);
+    tile.object = { type: selectedTool };
   }
   state.money -= tool.cost;
   if (tile.litter) tile.litter = Math.max(0, tile.litter - 1);
-  inspect(tile);
+  if (!options.silent) inspect(tile);
+  pushUndo(historyBefore);
+  return true;
+}
+
+function removeRange(from, to) {
+  if (!from || !to) return 0;
+  const historyBefore = captureHistoryState();
+  const minX = Math.min(from.x, to.x);
+  const maxX = Math.max(from.x, to.x);
+  const minY = Math.min(from.y, to.y);
+  const maxY = Math.max(from.y, to.y);
+  let removed = 0;
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      if (build(tileAt(x, y), { silent: true, recordHistory: false })) removed++;
+    }
+  }
+  if (removed) pushUndo(historyBefore);
+  toast(removed ? `${removed}マスをまとめて撤去しました` : "範囲内に撤去できる物がありません");
+  return removed;
 }
 
 function inspect(tile) {
+  selectedTile = tile;
   let title = "芝生タイル";
   let body = "通路、ライド、景観、水辺を配置できる空き地です。";
+  let controls = "";
   if (tile.terrain === "water") {
     title = "水辺の庭";
     body = "景観値を少し高めます。ゲストはつながった通路を使って水辺を回り込みます。";
@@ -1094,12 +1713,21 @@ function inspect(tile) {
   if (tile.object) {
     const t = tools[tile.object.type];
     title = t.label;
-    if (t.ride) body = `待ち列 ${tile.object.queue.length}人、乗車中 ${tile.object.riders.length}/${t.cap}人、運転回数 ${tile.object.totalRides}回。`;
+    if (t.ride) {
+      body = `${tile.object.broken ? "故障中。" : "稼働中。"}状態 ${Math.round(tile.object.condition ?? 100)}%、待ち列 ${tile.object.queue.length}人、乗車中 ${tile.object.riders.length}/${t.cap}人、運転回数 ${tile.object.totalRides}回。`;
+      controls = `<div class="inline-economy"><span>乗車料金</span><div class="stepper"><button data-action="ride-price-down" title="乗車料金を下げる">−</button><b>$${tile.object.price}</b><button data-action="ride-price-up" title="乗車料金を上げる">＋</button></div></div>`;
+    }
     else if (t.transit) body = `バスが入口と停留所を巡回します。現在のバス停は ${busStops().length}か所で、ゲスト流入と満足度を少し高めます。`;
-    else if (t.shop) body = "近くを通ったゲストが買い物をして、追加収益が入ります。";
+    else if (t.shop) {
+      const stock = Number(tile.object.stock ?? 0);
+      const maxStock = Number(tile.object.maxStock ?? tools.kiosk.maxStock);
+      const restockCost = (maxStock - stock) * 3;
+      body = `在庫 ${stock}/${maxStock}。近くを通ったゲストが在庫から商品を購入します。`;
+      controls = `<div class="inline-economy"><span>商品価格</span><div class="stepper"><button data-action="shop-price-down" title="商品価格を下げる">−</button><b>$${tile.object.price}</b><button data-action="shop-price-up" title="商品価格を上げる">＋</button></div><button class="restock-btn" data-action="restock" ${restockCost <= 0 ? "disabled" : ""}>補充 $${restockCost}</button></div>`;
+    }
     else body = `景観値 ${t.scenery}。満足度を少し上げ、清潔さの悪化をやわらげます。`;
   }
-  ui.selected.innerHTML = `<strong>${title}</strong><p>${body}</p>`;
+  ui.selected.innerHTML = `<strong>${title}</strong><p>${body}</p>${controls}`;
 }
 
 function toast(text) {
@@ -1109,13 +1737,66 @@ function toast(text) {
   toastTimer = setTimeout(() => ui.toast.classList.remove("show"), 1200);
 }
 
+function guestThought(guest, message, short, tone = "neutral", force = false) {
+  if (!guest || (!force && guest.thoughtCooldown > 0)) return false;
+  guest.thought = { short, tone };
+  guest.thoughtTimer = 4.2;
+  guest.thoughtCooldown = force ? 3 : 7;
+  addGuestLog(guest.profile?.label || GUEST_ARCHETYPES[guest.archetype]?.label || "ゲスト", message, tone);
+  return true;
+}
+
+function addGuestLog(label, message, tone = "neutral") {
+  state.guestLog.unshift({ label, message, tone, day: state.day });
+  state.guestLog = state.guestLog.slice(0, 6);
+  renderGuestLog();
+}
+
+function renderGuestLog() {
+  if (!state.guestLog.length) {
+    ui.guestLog.innerHTML = '<p class="empty-feedback">新しい感想を待っています</p>';
+    return;
+  }
+  ui.guestLog.innerHTML = state.guestLog.map(entry =>
+    `<article class="${entry.tone}"><b>${entry.label}</b><p>${entry.message}</p></article>`
+  ).join("");
+}
+
+function paintPathBetween(from, to) {
+  if (!from || !to) return;
+  let x = from.x;
+  let y = from.y;
+  const stepX = Math.sign(to.x - x);
+  const stepY = Math.sign(to.y - y);
+  while (x !== to.x) {
+    x += stepX;
+    if (build(tileAt(x, y), { silent: true, recordHistory: false })) mouse.painted++;
+  }
+  while (y !== to.y) {
+    y += stepY;
+    if (build(tileAt(x, y), { silent: true, recordHistory: false })) mouse.painted++;
+  }
+}
+
 canvas.addEventListener("pointerdown", e => {
   mouse.down = true;
   mouse.moved = false;
+  mouse.painted = 0;
   mouse.sx = e.clientX;
   mouse.sy = e.clientY;
   mouse.cx = camera.x;
   mouse.cy = camera.y;
+  mouse.lastTile = screenToTile(e.clientX, e.clientY);
+  mouse.mode = selectedTool === "path" ? "paint" : selectedTool === "remove" ? "range-remove" : "pan";
+  if (mouse.mode === "paint" && mouse.lastTile) {
+    mouse.historyBefore = captureHistoryState();
+    if (build(mouse.lastTile, { silent: true, recordHistory: false })) mouse.painted++;
+  }
+  if (mouse.mode === "range-remove") {
+    mouse.rangeStart = mouse.lastTile;
+    mouse.rangeEnd = mouse.lastTile;
+  }
+  canvas.setPointerCapture?.(e.pointerId);
 });
 
 canvas.addEventListener("pointermove", e => {
@@ -1123,6 +1804,21 @@ canvas.addEventListener("pointermove", e => {
   mouse.y = e.clientY;
   hovered = screenToTile(e.clientX, e.clientY);
   if (mouse.down) {
+    if (mouse.mode === "paint") {
+      if (hovered && hovered !== mouse.lastTile) {
+        paintPathBetween(mouse.lastTile, hovered);
+        mouse.lastTile = hovered;
+        mouse.moved = true;
+      }
+      return;
+    }
+    if (mouse.mode === "range-remove") {
+      if (hovered && hovered !== mouse.rangeEnd) {
+        mouse.rangeEnd = hovered;
+        mouse.moved = true;
+      }
+      return;
+    }
     const dx = e.clientX - mouse.sx;
     const dy = e.clientY - mouse.sy;
     if (Math.hypot(dx, dy) > 4) mouse.moved = true;
@@ -1133,7 +1829,33 @@ canvas.addEventListener("pointermove", e => {
 
 canvas.addEventListener("pointerup", e => {
   mouse.down = false;
-  if (!mouse.moved) build(screenToTile(e.clientX, e.clientY));
+  canvas.releasePointerCapture?.(e.pointerId);
+  if (mouse.mode === "paint") {
+    if (mouse.painted) pushUndo(mouse.historyBefore);
+    toast(mouse.painted ? `通路を ${mouse.painted}マス建設しました` : "建設できる空き地をドラッグしてください");
+  } else if (mouse.mode === "range-remove") {
+    removeRange(mouse.rangeStart, mouse.rangeEnd || mouse.rangeStart);
+  } else if (!mouse.moved) {
+    build(screenToTile(e.clientX, e.clientY));
+  }
+  mouse.mode = null;
+  mouse.lastTile = null;
+  mouse.rangeStart = null;
+  mouse.rangeEnd = null;
+  mouse.historyBefore = null;
+});
+
+canvas.addEventListener("pointercancel", () => {
+  if (mouse.mode === "paint" && mouse.painted) {
+    pushUndo(mouse.historyBefore);
+    undoLastBuild();
+  }
+  mouse.down = false;
+  mouse.mode = null;
+  mouse.lastTile = null;
+  mouse.rangeStart = null;
+  mouse.rangeEnd = null;
+  mouse.historyBefore = null;
 });
 
 canvas.addEventListener("wheel", e => {
@@ -1206,24 +1928,111 @@ document.querySelectorAll("[data-hero]").forEach(btn => {
 });
 applyHeroSelection(selectedHero, true);
 
+function adjustStaff(role, delta) {
+  const labels = { cleaners: "清掃員", mechanics: "整備員" };
+  const current = state.staff[role];
+  const next = clamp(current + delta, 0, 12);
+  if (next === current) return;
+  if (delta > 0) {
+    const hiringCost = role === "cleaners" ? 250 : 350;
+    if (state.money < hiringCost) {
+      toast("雇用資金が足りません");
+      return;
+    }
+    state.money -= hiringCost;
+    state.finance.staffExpenses += hiringCost;
+    toast(`${labels[role]}を雇いました`);
+  } else {
+    toast(`${labels[role]}を1人減らしました`);
+  }
+  state.staff[role] = next;
+  computeStats();
+}
+
+function adjustAdmissionFee(delta) {
+  const next = clamp(state.admissionFee + delta, 0, 75);
+  if (next === state.admissionFee) return;
+  state.admissionFee = next;
+  computeStats();
+  toast(`入園料を $${next} に設定しました`);
+}
+
+function adjustSelectedPrice(delta) {
+  const object = selectedTile?.object;
+  const tool = tools[object?.type];
+  if (!object || (!tool?.ride && !tool?.shop)) return;
+  const min = tool.ride ? 0 : 1;
+  const max = tool.ride ? 30 : 20;
+  object.price = clamp(Number(object.price ?? tool.defaultPrice) + delta, min, max);
+  inspect(selectedTile);
+  toast(`${tool.ride ? "乗車" : "商品"}料金を $${object.price} に設定しました`);
+}
+
+function restockSelectedKiosk() {
+  const shop = selectedTile?.object;
+  if (!tools[shop?.type]?.shop) return;
+  const maxStock = Number(shop.maxStock ?? tools.kiosk.maxStock);
+  const missing = Math.max(0, maxStock - Number(shop.stock ?? 0));
+  if (!missing) return;
+  const cost = missing * 3;
+  if (state.money < cost) {
+    toast("仕入れ資金が足りません");
+    return;
+  }
+  state.money -= cost;
+  state.finance.restockExpenses += cost;
+  shop.stock = maxStock;
+  inspect(selectedTile);
+  computeStats();
+  toast(`商品を ${missing} 個補充しました`);
+}
+
 ui.pauseBtn.addEventListener("click", () => {
   paused = !paused;
   ui.pauseBtn.textContent = paused ? "再開" : "停止";
 });
 
 ui.roundBtn.addEventListener("click", () => {
+  const revenue = state.finance.admissionRevenue + state.finance.rideRevenue + state.finance.shopRevenue;
+  const expenses = state.finance.maintenanceExpenses + state.finance.staffExpenses + state.finance.restockExpenses;
+  const net = revenue - expenses;
+  const performanceBonus = net > 0 && state.happy >= 70
+    ? Math.min(600, Math.round(state.happy * 2 + net * .05))
+    : 0;
   state.round++;
   state.day++;
-  state.money += 700 + state.round * 180 + Math.round(state.happy * 8);
-  state.clean = clamp(state.clean + 8 - state.guests.length * .12, 35, 100);
-  for (const t of state.tiles) t.litter *= .35;
-  toast(`ラウンド ${state.round} を開園しました`);
+  state.money += performanceBonus;
+  Object.keys(state.finance).forEach(key => { state.finance[key] = 0; });
+  undoStack.length = 0;
+  updateUndoButton();
+  toast(performanceBonus
+    ? `黒字評価ボーナス $${performanceBonus}。ラウンド ${state.round} を開園しました`
+    : `収支改善に挑戦。ラウンド ${state.round} を開園しました`);
+  computeStats();
 });
 
 ui.saveBtn.addEventListener("click", saveGame);
+ui.undoBtn.addEventListener("click", undoLastBuild);
 ui.loadBtn.addEventListener("click", loadGame);
+ui.cleanerMinus.addEventListener("click", () => adjustStaff("cleaners", -1));
+ui.cleanerPlus.addEventListener("click", () => adjustStaff("cleaners", 1));
+ui.mechanicMinus.addEventListener("click", () => adjustStaff("mechanics", -1));
+ui.mechanicPlus.addEventListener("click", () => adjustStaff("mechanics", 1));
+ui.admissionMinus.addEventListener("click", () => adjustAdmissionFee(-1));
+ui.admissionPlus.addEventListener("click", () => adjustAdmissionFee(1));
+ui.selected.addEventListener("click", event => {
+  const action = event.target.closest("[data-action]")?.dataset.action;
+  if (action === "ride-price-down" || action === "shop-price-down") adjustSelectedPrice(-1);
+  if (action === "ride-price-up" || action === "shop-price-up") adjustSelectedPrice(1);
+  if (action === "restock") restockSelectedKiosk();
+});
 
 window.addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+    e.preventDefault();
+    undoLastBuild();
+    return;
+  }
   const speed = 34;
   if (e.key === "ArrowLeft" || e.key.toLowerCase() === "a") camera.x += speed;
   if (e.key === "ArrowRight" || e.key.toLowerCase() === "d") camera.x -= speed;
@@ -1238,6 +2047,8 @@ function loop(now) {
   drawWorld();
   requestAnimationFrame(loop);
 }
+renderGuestLog();
+updateUndoButton();
 computeStats();
 window.parkDebug = {
   state,
@@ -1250,7 +2061,7 @@ window.parkDebug = {
     return this.summary();
   },
   screenOfTile(x, y) {
-    const p = iso(x + .5, y + .5);
+    const p = iso(x, y);
     return { x: p.x, y: p.y + TILE_H * .5 * camera.zoom };
   },
   summary() {
@@ -1261,6 +2072,16 @@ window.parkDebug = {
       guests: state.guests.length,
       queue: state.rides.reduce((sum, r) => sum + r.queue.length, 0),
       rides: state.rides.length,
+      brokenRides: state.rides.filter(ride => ride.broken).length,
+      averageCondition: Math.round(state.rides.length
+        ? state.rides.reduce((sum, ride) => sum + Number(ride.condition ?? 100), 0) / state.rides.length
+        : 100),
+      cleaners: state.staff.cleaners,
+      mechanics: state.staff.mechanics,
+      operatingCost: operatingCost(),
+      admissionFee: state.admissionFee,
+      sentiment: Number(state.sentiment.toFixed(1)),
+      finance: { ...state.finance },
       buses: state.buses.length,
       busStops: busStops().length,
       paths: state.tiles.filter(t => t.path).length,
@@ -1268,6 +2089,19 @@ window.parkDebug = {
     };
   },
   saveGame,
-  loadGame
+  loadGame,
+  adjustAdmissionFee,
+  adjustSelectedPrice,
+  restockSelectedKiosk,
+  inspect,
+  update,
+  operatingCostBreakdown,
+  undoLastBuild,
+  removeRange,
+  spawnGuestAt,
+  chooseRide,
+  addGuestLog,
+  getPlacementStatus,
+  undoDepth() { return undoStack.length; }
 };
 requestAnimationFrame(loop);
