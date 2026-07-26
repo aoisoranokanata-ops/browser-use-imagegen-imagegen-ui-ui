@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ゆめじまパーク</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main id="app">
+    <canvas id="game" aria-label="アイソメトリック視点のテーマパーク経営シミュレーション"></canvas>
+
+    <section class="topbar" aria-label="パーク状況">
+      <div class="brand">
+        <span class="mark"></span>
+        <div>
+          <strong>ゆめじまパーク</strong>
+          <small><span id="day">1</span>日目 / ラウンド <span id="round">1</span></small>
+        </div>
+      </div>
+      <div class="meters">
+        <span><b id="money">$18,000</b><small>資金</small></span>
+        <span><b id="happy">82%</b><small>満足度</small></span>
+        <span><b id="clean">91%</b><small>清潔さ</small></span>
+        <span><b id="queue">0</b><small>待ち列</small></span>
+        <span><b id="guests">0</b><small>ゲスト</small></span>
+      </div>
+    </section>
+
+    <section class="hero-select" aria-label="主人公選択">
+      <div class="hero-head">
+        <strong>主人公</strong>
+        <span id="heroName">男性マネージャー</span>
+      </div>
+      <div class="hero-options">
+        <button class="hero-card active" data-hero="male" title="男性マネージャーを選ぶ">
+          <img src="assets/protagonist-male.png" alt="ビジネススーツ姿の男性主人公" />
+          <span>男性</span>
+        </button>
+        <button class="hero-card" data-hero="female" title="女性マネージャーを選ぶ">
+          <img src="assets/protagonist-female.png" alt="ビジネススーツ姿の女性主人公" />
+          <span>女性</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="palette" aria-label="建設ツール">
+      <div class="tool-category active" data-category="public">
+        <button class="category-trigger" type="button" aria-expanded="false">公共<span>▼</span></button>
+        <div class="category-menu" role="menu">
+          <button data-tool="inspect" class="active" title="調べる">見る<span>調べる</span></button>
+          <button data-tool="path" title="通路を敷く">$80<span>通路</span></button>
+          <button data-tool="bus_stop" title="バス停を置く">$650<span>バス停</span></button>
+          <button data-tool="remove" title="撤去">撤去<span>消す</span></button>
+        </div>
+      </div>
+
+      <div class="tool-category" data-category="rides">
+        <button class="category-trigger" type="button" aria-expanded="false">遊具<span>▼</span></button>
+        <div class="category-menu" role="menu">
+          <button data-tool="carousel" title="メリーゴーランド">$1.8k<span>メリー</span></button>
+          <button data-tool="wheel" title="観覧車">$3.2k<span>観覧車</span></button>
+          <button data-tool="coaster" title="コースター駅">$4.8k<span>コースター</span></button>
+          <button data-tool="teacups" title="ティーカップ">$1.4k<span>カップ</span></button>
+        </div>
+      </div>
+
+      <div class="tool-category" data-category="plants">
+        <button class="category-trigger" type="button" aria-expanded="false">植物<span>▼</span></button>
+        <div class="category-menu" role="menu">
+          <button data-tool="tree" title="木を植える">$120<span>木</span></button>
+          <button data-tool="shrub" title="低木を置く">$80<span>低木</span></button>
+          <button data-tool="flower" title="花壇を置く">$100<span>花壇</span></button>
+          <button data-tool="palm" title="ヤシを植える">$180<span>ヤシ</span></button>
+        </div>
+      </div>
+
+      <div class="tool-category" data-category="scenery">
+        <button class="category-trigger" type="button" aria-expanded="false">施設・景観<span>▼</span></button>
+        <div class="category-menu" role="menu">
+          <button data-tool="kiosk" title="スナック売店">$900<span>売店</span></button>
+          <button data-tool="water" title="水辺を作る">$160<span>水辺</span></button>
+          <button data-tool="decor" title="装飾を置く">$220<span>装飾</span></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="sidepanel" aria-label="パーク詳細">
+      <div class="panel-title">
+        <h1>パーク管理</h1>
+        <button id="pauseBtn" title="一時停止 / 再開">停止</button>
+      </div>
+      <div id="selected" class="selected">
+        <strong>ウェルカム広場</strong>
+        <p>ドラッグで移動、ホイールでズーム。タイルをクリックして建設します。ゲストはつながった通路を通ってライドへ向かいます。</p>
+      </div>
+      <div class="chart">
+        <div><span>成長</span><b id="growthBar"></b></div>
+        <div><span>ライド稼働</span><b id="loadBar"></b></div>
+        <div><span>景観</span><b id="sceneBar"></b></div>
+      </div>
+      <button id="roundBtn" class="primary">次のラウンドを開園</button>
+      <div class="save-row">
+        <button id="saveBtn" title="現在のパークを保存">セーブ</button>
+        <button id="loadBtn" title="保存したパークを読み込む">ロード</button>
+      </div>
+      <details>
+        <summary>アート方針</summary>
+        <img src="assets/themepark-art-direction.png" alt="生成したアイソメトリック遊園地アセットシート" />
+      </details>
+    </section>
+
+    <section class="zoom-controls" aria-label="マップ拡大縮小">
+      <button id="zoomOutBtn" title="マップを縮小">−</button>
+      <button id="zoomResetBtn" title="マップを等倍に戻す">等倍</button>
+      <button id="zoomInBtn" title="マップを拡大">＋</button>
+    </section>
+
+    <section id="toast" class="toast" aria-live="polite"></section>
+  </main>
+  <script src="game.js"></script>
+</body>
+</html>
