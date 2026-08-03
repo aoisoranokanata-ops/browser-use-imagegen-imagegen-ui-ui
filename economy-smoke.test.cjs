@@ -216,6 +216,60 @@ assert.equal(familyGuest.spent, true);
 assert.equal(hungryShopTile.object.stock, stockBeforeMeal - 1);
 assert.ok(state.guestLog.length > 0);
 
+state.money = 50000;
+const transitCostBefore = debug.operatingCostBreakdown().transit;
+debug.buildAt(4, 13, "bus_stop");
+debug.buildAt(10, 13, "bus_stop");
+let busStopTiles = state.tiles.filter(tile => tile.object?.type === "bus_stop");
+assert.equal(busStopTiles.length, 3);
+assert.equal(state.transit.networks.bus.routeStopIds.length, 3);
+assert.equal(new Set(state.transit.networks.bus.routeStopIds).size, 3);
+
+const lastStop = busStopTiles[2];
+const lastStopId = lastStop.object.stopId;
+assert.equal(debug.moveStopInRoute(lastStop, -1), true);
+assert.equal(state.transit.networks.bus.routeStopIds[1], lastStopId);
+assert.equal(debug.toggleStopInRoute(lastStop), true);
+assert.equal(state.transit.networks.bus.routeStopIds.includes(lastStopId), false);
+debug.undoLastBuild();
+assert.equal(state.transit.networks.bus.routeStopIds[1], lastStopId, "route edits should be undoable");
+
+assert.equal(debug.adjustBusFleet(1), true);
+assert.equal(debug.adjustBusFleet(1), true);
+assert.equal(debug.adjustBusInterval(-1), true);
+assert.equal(debug.adjustBusInterval(-1), true);
+assert.equal(state.transit.networks.bus.fleet, 3);
+assert.equal(state.transit.networks.bus.interval, 5);
+assert.ok(debug.operatingCostBreakdown().transit > transitCostBefore);
+assert.equal(debug.getTransitRoutePlan("bus").connectedStopIds.length, 3);
+
+state.admissionFee = 0;
+state.guests = [];
+state.transit.networks.bus.entranceWaiting = 24;
+math.random = () => 0;
+for (let i = 0; i < 1800; i++) debug.update(.05);
+assert.equal(state.buses.length, 3);
+assert.ok(state.transit.networks.bus.totalRiders > 0);
+assert.ok(busStopTiles.some(tile => tile.object.usage > 0), "stops should record individual usage");
+
+const savedTransit = {
+  fleet: state.transit.networks.bus.fleet,
+  interval: state.transit.networks.bus.interval,
+  route: [...state.transit.networks.bus.routeStopIds],
+  riders: state.transit.networks.bus.totalRiders
+};
+debug.saveGame();
+state.transit.networks.bus.fleet = 1;
+state.transit.networks.bus.interval = 15;
+state.transit.networks.bus.routeStopIds = [];
+debug.loadGame();
+busStopTiles = state.tiles.filter(tile => tile.object?.type === "bus_stop");
+assert.equal(state.transit.networks.bus.fleet, savedTransit.fleet);
+assert.equal(state.transit.networks.bus.interval, savedTransit.interval);
+assert.deepEqual([...state.transit.networks.bus.routeStopIds], savedTransit.route);
+assert.equal(state.transit.networks.bus.totalRiders, savedTransit.riders);
+assert.ok(busStopTiles.some(tile => tile.object.usage > 0), "stop usage should survive save/load");
+
 state.guests = [];
 const candidates = state.tiles.filter(tile => !tile.object && !tile.path && tile.terrain !== "water").slice(0, 8);
 const baseCost = debug.operatingCostBreakdown().total;

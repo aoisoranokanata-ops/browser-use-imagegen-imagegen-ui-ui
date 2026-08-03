@@ -486,6 +486,95 @@ h1 { margin: 0; font-size: 21px; }
 
 .maintenance-status b { color: var(--ink); }
 
+.transit-panel {
+  margin: 12px 0;
+  padding: 10px;
+  background: rgba(73, 171, 194, .08);
+  border: 1px solid rgba(73, 171, 194, .28);
+  border-radius: 8px;
+}
+
+.transit-heading,
+.transit-control-row,
+.transit-metrics,
+.route-board-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+}
+
+.transit-heading { margin-bottom: 8px; }
+.transit-heading strong { font-size: 13px; }
+.transit-heading span { color: var(--teal); font-size: 10px; font-weight: 900; }
+
+.transit-control-row {
+  min-height: 42px;
+  border-top: 1px solid rgba(45, 59, 70, .09);
+}
+.transit-control-row > span b,
+.transit-control-row > span small { display: block; }
+.transit-control-row > span b { font-size: 12px; }
+.transit-control-row > span small { color: var(--muted); font-size: 9px; }
+.transit-control-row .stepper { grid-template-columns: 30px 42px 30px; }
+
+.transit-metrics {
+  padding: 7px 0;
+  color: var(--muted);
+  font-size: 9px;
+  border-top: 1px solid rgba(45, 59, 70, .09);
+}
+.transit-metrics b { display: block; margin-top: 2px; color: var(--ink); font-size: 11px; }
+
+.route-board {
+  padding-top: 7px;
+  border-top: 1px solid rgba(45, 59, 70, .09);
+}
+.route-board-title b { font-size: 10px; }
+.route-board-title small { color: var(--muted); font-size: 8px; }
+.route-list { display: grid; gap: 4px; margin-top: 6px; }
+.route-stop-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 6px;
+  color: var(--ink);
+  text-align: left;
+  background: rgba(255, 255, 255, .62);
+  border: 1px solid transparent;
+  border-radius: 5px;
+}
+.route-stop-row:hover { border-color: rgba(73, 171, 194, .48); background: rgba(255, 255, 255, .9); }
+.route-stop-row > b {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  color: white;
+  background: var(--teal);
+  border-radius: 50%;
+  font-size: 9px;
+}
+.route-stop-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; font-weight: 800; }
+.route-stop-row small { color: var(--muted); font-size: 8px; }
+.route-stop-row.congested { box-shadow: inset 3px 0 var(--coral); }
+.route-stop-row.not-in-route { opacity: .72; }
+.route-stop-row.not-in-route > b { background: var(--muted); }
+.route-empty { padding: 5px 0; color: var(--muted); font-size: 9px; }
+
+.transit-stop-controls {
+  display: grid;
+  grid-template-columns: 1fr 34px 34px;
+  gap: 5px;
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+}
+.transit-stop-controls button { min-height: 30px; padding: 0 7px; font-size: 10px; }
+
 .primary {
   width: 100%;
   background: var(--coral);

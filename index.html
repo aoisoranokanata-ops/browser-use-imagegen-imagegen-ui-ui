@@ -154,6 +154,37 @@
           <span>平均状態 <b id="conditionAverage">100%</b></span>
         </div>
       </section>
+      <section class="transit-panel" aria-label="公共交通管理">
+        <div class="transit-heading">
+          <strong>バス運行</strong>
+          <span id="transitStatus">路線準備中</span>
+        </div>
+        <div class="transit-control-row">
+          <span><b>車両数</b><small>1台 $1,400</small></span>
+          <div class="stepper">
+            <button id="busMinus" title="バスを減らす">−</button>
+            <b id="busCount">1</b>
+            <button id="busPlus" title="バスを購入">＋</button>
+          </div>
+        </div>
+        <div class="transit-control-row">
+          <span><b>運行間隔</b><small>短いほど待ち時間を軽減</small></span>
+          <div class="stepper">
+            <button id="intervalMinus" title="運行間隔を短くする">−</button>
+            <b id="busInterval">7秒</b>
+            <button id="intervalPlus" title="運行間隔を長くする">＋</button>
+          </div>
+        </div>
+        <div class="transit-metrics">
+          <span>待機 <b id="transitWaiting">0人</b></span>
+          <span>乗車率 <b id="transitLoad">0%</b></span>
+          <span>累計 <b id="transitRiders">0人</b></span>
+        </div>
+        <div class="route-board">
+          <div class="route-board-title"><b>停車順</b><small>バス停を選択して編集</small></div>
+          <div id="routeList" class="route-list"><span class="route-empty">バス停がありません</span></div>
+        </div>
+      </section>
       <button id="roundBtn" class="primary">次のラウンドを開園</button>
       <div class="save-row">
         <button id="saveBtn" title="現在のパークを保存">セーブ</button>

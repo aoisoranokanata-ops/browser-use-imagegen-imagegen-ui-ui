@@ -29,6 +29,17 @@ const ui = {
   runningCost: document.getElementById("runningCost"),
   brokenCount: document.getElementById("brokenCount"),
   conditionAverage: document.getElementById("conditionAverage"),
+  busMinus: document.getElementById("busMinus"),
+  busPlus: document.getElementById("busPlus"),
+  busCount: document.getElementById("busCount"),
+  intervalMinus: document.getElementById("intervalMinus"),
+  intervalPlus: document.getElementById("intervalPlus"),
+  busInterval: document.getElementById("busInterval"),
+  transitStatus: document.getElementById("transitStatus"),
+  transitWaiting: document.getElementById("transitWaiting"),
+  transitLoad: document.getElementById("transitLoad"),
+  transitRiders: document.getElementById("transitRiders"),
+  routeList: document.getElementById("routeList"),
   admissionMinus: document.getElementById("admissionMinus"),
   admissionPlus: document.getElementById("admissionPlus"),
   admissionFee: document.getElementById("admissionFee"),
@@ -54,6 +65,18 @@ const GUEST_ARCHETYPES = {
   scenic: { label: "景観重視", rideBias: { wheel: 9, carousel: 5, coaster: -2 }, hungerRate: .8, fatigueRate: .75 },
   foodie: { label: "グルメ", rideBias: { carousel: 2, teacups: 2 }, hungerRate: 1.5, fatigueRate: .8 },
   relaxed: { label: "のんびり", rideBias: { carousel: 7, wheel: 5, coaster: -7 }, hungerRate: .85, fatigueRate: .65 }
+};
+const TRANSIT_MODE_CONFIGS = {
+  bus: {
+    label: "バス",
+    stopTool: "bus_stop",
+    capacity: 12,
+    vehicleCost: 1400,
+    vehicleRefund: 420,
+    vehicleUpkeep: 22,
+    minInterval: 3,
+    maxInterval: 15
+  }
 };
 const tools = {
   inspect: { cost: 0, label: "調べる" },
@@ -97,8 +120,9 @@ let spawnTimer = 0;
 let incomeTimer = 0;
 let expenseTimer = 0;
 let toastTimer = 0;
-let busDropTimer = 0;
 let guestSequence = 0;
+let stopSequence = 0;
+let transitRenderSignature = "";
 const undoStack = [];
 
 const state = {
@@ -123,7 +147,20 @@ const state = {
   guests: [],
   rides: [],
   buses: [],
-  guestLog: []
+  guestLog: [],
+  transit: {
+    activeMode: "bus",
+    networks: {
+      bus: {
+        routeStopIds: [],
+        fleet: 1,
+        interval: 7,
+        totalRiders: 0,
+        entranceWaiting: 3,
+        demandAccumulator: 0
+      }
+    }
+  }
 };
 
 function makeTile(x, y) {
@@ -169,9 +206,69 @@ function placeStarterRide(x, y, type) {
 }
 
 function placeStarterObject(x, y, type) {
-  tileAt(x, y).object = type === "kiosk"
-    ? { type, stock: tools.kiosk.maxStock, maxStock: tools.kiosk.maxStock, price: tools.kiosk.defaultPrice }
-    : { type };
+  if (type === "kiosk") {
+    tileAt(x, y).object = { type, stock: tools.kiosk.maxStock, maxStock: tools.kiosk.maxStock, price: tools.kiosk.defaultPrice };
+    return;
+  }
+  if (tools[type]?.transit) {
+    const stop = createTransitStop("bus");
+    tileAt(x, y).object = stop;
+    registerTransitStop(stop);
+    return;
+  }
+  tileAt(x, y).object = { type };
+}
+
+function transitNetwork(mode = state.transit.activeMode) {
+  return state.transit.networks[mode];
+}
+
+function createTransitStop(mode = "bus", saved = {}) {
+  const parsedNumber = Number(String(saved.stopId || "").split("-").pop());
+  const hasSavedNumber = Number.isFinite(parsedNumber) && parsedNumber > 0;
+  if (hasSavedNumber) stopSequence = Math.max(stopSequence, parsedNumber);
+  const number = hasSavedNumber ? parsedNumber : ++stopSequence;
+  return {
+    type: TRANSIT_MODE_CONFIGS[mode].stopTool,
+    transitMode: mode,
+    stopId: saved.stopId || `${mode}-${number}`,
+    name: saved.name || `${TRANSIT_MODE_CONFIGS[mode].label}停 ${number}`,
+    waiting: Math.max(0, Number(saved.waiting) || 0),
+    waitingAccumulator: Math.max(0, Number(saved.waitingAccumulator) || 0),
+    usage: Math.max(0, Number(saved.usage) || 0),
+    boarded: Math.max(0, Number(saved.boarded) || 0),
+    lastBoarding: Math.max(0, Number(saved.lastBoarding) || 0)
+  };
+}
+
+function registerTransitStop(stop) {
+  const network = transitNetwork(stop.transitMode || "bus");
+  if (!network.routeStopIds.includes(stop.stopId)) network.routeStopIds.push(stop.stopId);
+}
+
+function cloneTransitState() {
+  return JSON.parse(JSON.stringify(state.transit));
+}
+
+function restoreTransitState(savedTransit) {
+  const config = TRANSIT_MODE_CONFIGS.bus;
+  const savedBus = savedTransit?.networks?.bus;
+  const stopIds = busStops().map(tile => tile.object.stopId);
+  state.transit = {
+    activeMode: TRANSIT_MODE_CONFIGS[savedTransit?.activeMode] ? savedTransit.activeMode : "bus",
+    networks: {
+      bus: {
+        routeStopIds: Array.isArray(savedBus?.routeStopIds) ? [...savedBus.routeStopIds] : [...stopIds],
+        fleet: clamp(Math.round(Number(savedBus?.fleet ?? 1)), 1, 6),
+        interval: clamp(Number(savedBus?.interval ?? 7), config.minInterval, config.maxInterval),
+        totalRiders: Math.max(0, Number(savedBus?.totalRiders) || 0),
+        entranceWaiting: clamp(Number(savedBus?.entranceWaiting ?? 3), 0, 60),
+        demandAccumulator: clamp(Number(savedBus?.demandAccumulator) || 0, 0, .999),
+        crowdingEvents: Math.max(0, Number(savedBus?.crowdingEvents) || 0)
+      }
+    }
+  };
+  syncTransitRoute("bus");
 }
 
 function resize() {
@@ -252,8 +349,33 @@ function drawWorld() {
     }
     if (hovered === tile) drawPlacementPreview(tile, p);
   }
+  drawTransitRoute();
   drawBuses();
   drawGuests();
+}
+
+function drawTransitRoute() {
+  const plan = getTransitRoutePlan("bus");
+  if (plan.connectedStopIds.length < 1 || plan.tiles.length < 2) return;
+  ctx.save();
+  ctx.strokeStyle = selectedTile?.object?.transitMode === "bus"
+    ? "rgba(27,126,151,.72)"
+    : "rgba(27,126,151,.28)";
+  ctx.lineWidth = (selectedTile?.object?.transitMode === "bus" ? 5 : 3) * camera.zoom;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.setLineDash([7 * camera.zoom, 5 * camera.zoom]);
+  ctx.beginPath();
+  plan.tiles.forEach((tile, index) => {
+    const point = iso(tile.x, tile.y);
+    const x = point.x;
+    const y = point.y + TILE_H * .5 * camera.zoom;
+    if (!index) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
 }
 
 function isTileInRemovalRange(tile) {
@@ -336,7 +458,7 @@ function drawLitter(x, y, amount) {
 function drawObject(tile, p) {
   const type = tile.object.type;
   if (tools[type]?.ride) drawRide(type, p, tile.object);
-  if (type === "bus_stop") drawBusStop(p);
+  if (type === "bus_stop") drawBusStop(p, tile.object);
   if (type === "kiosk") drawKiosk(p, tile.object);
   if (type === "tree") drawTree(p);
   if (type === "shrub") drawShrub(p);
@@ -565,7 +687,7 @@ function drawKiosk(p, kiosk = {}) {
   ctx.restore();
 }
 
-function drawBusStop(p) {
+function drawBusStop(p, stop = {}) {
   const z = camera.zoom;
   ctx.save();
   ctx.translate(p.x, p.y + 20 * z);
@@ -597,6 +719,17 @@ function drawBusStop(p) {
   ctx.font = `${8 * z}px sans-serif`;
   ctx.textAlign = "center";
   ctx.fillText("BUS", 24 * z, -28 * z);
+  const order = transitNetwork(stop.transitMode || "bus")?.routeStopIds.indexOf(stop.stopId) ?? -1;
+  if (order >= 0) {
+    ctx.fillStyle = "#26313f";
+    ctx.beginPath();
+    ctx.arc(-20 * z, -34 * z, 9 * z, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff8df";
+    ctx.font = `bold ${9 * z}px sans-serif`;
+    ctx.fillText(String(order + 1), -20 * z, -31 * z);
+  }
+  if (Number(stop.waiting || 0) > 0) drawRideStatusBadge(String(Math.floor(stop.waiting)), -17 * z, -55 * z, stop.waiting >= 10 ? "#d84f4f" : "#49abc2");
   ctx.restore();
 }
 
@@ -755,11 +888,11 @@ function drawBuses() {
     const x = a.x + (b.x - a.x) * f + .5;
     const y = a.y + (b.y - a.y) * f + .5;
     const p = iso(x, y, 9);
-    drawBus(p.x, p.y, b.x - a.x, b.y - a.y);
+    drawBus(p.x, p.y, b.x - a.x, b.y - a.y, bus);
   }
 }
 
-function drawBus(x, y, dx, dy) {
+function drawBus(x, y, dx, dy, bus = {}) {
   const z = camera.zoom;
   const horizontal = Math.abs(dx) >= Math.abs(dy);
   ctx.save();
@@ -778,6 +911,16 @@ function drawBus(x, y, dx, dy) {
   ctx.arc(-10 * z, 7 * z, 3 * z, 0, Math.PI * 2);
   ctx.arc(11 * z, 7 * z, 3 * z, 0, Math.PI * 2);
   ctx.fill();
+  if (Number(bus.passengers || 0) > 0) {
+    ctx.fillStyle = bus.passengers >= TRANSIT_MODE_CONFIGS.bus.capacity ? "#d84f4f" : "#26313f";
+    ctx.beginPath();
+    ctx.arc(16 * z, -13 * z, 7 * z, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff8df";
+    ctx.font = `bold ${7 * z}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.fillText(String(bus.passengers), 16 * z, -10.5 * z);
+  }
   ctx.restore();
 }
 
@@ -913,7 +1056,10 @@ function update(dt) {
 function operatingCostBreakdown() {
   const maintenance = state.rides.reduce((sum, ride) => sum + (tools[ride.type].upkeep || 0), 0);
   const staff = state.staff.cleaners * 35 + state.staff.mechanics * 45;
-  const transit = busStops().length * 6;
+  const busNetwork = transitNetwork("bus");
+  const busConfig = TRANSIT_MODE_CONFIGS.bus;
+  const frequencyPremium = Math.max(0, 8 - busNetwork.interval) * 5;
+  const transit = busStops().length * 6 + busNetwork.fleet * busConfig.vehicleUpkeep + frequencyPremium;
   return { maintenance, staff, transit, total: Math.round(maintenance + staff + transit) };
 }
 
@@ -922,22 +1068,81 @@ function operatingCost() {
 }
 
 function updateBuses(dt) {
-  const route = getBusRoute();
-  const stops = busStops();
-  if (!stops.length || route.length < 2) {
+  const network = transitNetwork("bus");
+  const config = TRANSIT_MODE_CONFIGS.bus;
+  const plan = getTransitRoutePlan("bus");
+  updateTransitDemand(network, dt);
+  if (!plan.connectedStopIds.length || plan.tiles.length < 2 || network.fleet <= 0) {
     state.buses = [];
     return;
   }
-  if (!state.buses.length) state.buses.push({ distance: 0 });
+  syncBusFleet(network, plan);
+  const speed = clamp(plan.tiles.length / Math.max(1, network.interval * network.fleet), .75, 3.4);
   for (const bus of state.buses) {
-    bus.distance = (bus.distance + dt * 1.8) % route.length;
+    const oldIndex = Math.floor(bus.distance) % plan.tiles.length;
+    bus.distance = (bus.distance + dt * speed) % plan.tiles.length;
+    const nextIndex = Math.floor(bus.distance) % plan.tiles.length;
+    if (nextIndex !== oldIndex) {
+      const markers = plan.markers.get(nextIndex) || [];
+      for (const marker of markers) serviceTransitMarker(bus, marker, network, config);
+    }
   }
-  busDropTimer += dt;
-  if (busDropTimer > Math.max(4.5, 8 - stops.length * .7) && state.guests.length < 18 + state.round * 6) {
-    busDropTimer = 0;
-    const stop = stops[Math.floor(Math.random() * stops.length)];
-    spawnGuestAt(nearestPathForTile(stop) || entrance);
+}
+
+function syncBusFleet(network, plan) {
+  const signature = `${network.routeStopIds.join("|")}:${plan.tiles.length}:${network.fleet}`;
+  if (state.buses.length === network.fleet && state.buses.every(bus => bus.routeSignature === signature)) return;
+  state.buses = Array.from({ length: network.fleet }, (_, index) => ({
+    id: `bus-${index + 1}`,
+    distance: plan.tiles.length * index / Math.max(1, network.fleet),
+    passengers: 0,
+    lastStopId: null,
+    routeSignature: signature
+  }));
+}
+
+function updateTransitDemand(network, dt) {
+  const attraction = state.rides.reduce((sum, ride) => sum + tools[ride.type].appeal, 0);
+  network.demandAccumulator += dt * (.34 + state.round * .025 + attraction * .0025);
+  while (network.demandAccumulator >= 1) {
+    network.demandAccumulator--;
+    network.entranceWaiting = Math.min(60, network.entranceWaiting + 1);
   }
+  for (const stop of busStops()) {
+    stop.waitingAccumulator = Number(stop.waitingAccumulator || 0) + dt * (.055 + state.guests.length * .0035 + state.round * .004);
+    while (stop.waitingAccumulator >= 1) {
+      stop.waitingAccumulator--;
+      stop.waiting = Math.min(40, Number(stop.waiting || 0) + 1);
+    }
+  }
+}
+
+function serviceTransitMarker(bus, marker, network, config) {
+  if (marker.kind === "entrance") {
+    bus.passengers = 0;
+    const boarded = Math.min(config.capacity, Math.floor(network.entranceWaiting));
+    network.entranceWaiting -= boarded;
+    bus.passengers = boarded;
+    network.totalRiders += boarded;
+    if (network.entranceWaiting > 0 && boarded >= config.capacity) network.crowdingEvents = Number(network.crowdingEvents || 0) + 1;
+    return;
+  }
+  const stop = busStops().find(candidate => candidate.object.stopId === marker.stopId)?.object;
+  if (!stop) return;
+  const alighting = Math.min(bus.passengers, Math.max(1, Math.round(bus.passengers * (.45 + Math.random() * .25))));
+  bus.passengers -= alighting;
+  stop.usage += alighting;
+  const startTile = nearestPathForTile(state.tiles.find(tile => tile.object === stop)) || entrance;
+  for (let i = 0; i < alighting && state.guests.length < 18 + state.round * 6; i++) spawnGuestAt(startTile);
+  const boarded = Math.min(Math.floor(stop.waiting), config.capacity - bus.passengers);
+  stop.waiting -= boarded;
+  stop.boarded += boarded;
+  stop.usage += boarded;
+  stop.lastBoarding = boarded;
+  bus.passengers += boarded;
+  bus.lastStopId = stop.stopId;
+  network.totalRiders += boarded;
+  if (stop.waiting > 0 && bus.passengers >= config.capacity) network.crowdingEvents = Number(network.crowdingEvents || 0) + 1;
 }
 
 function spawnGuest() {
@@ -1300,30 +1505,66 @@ function key(t) { return `${t.x},${t.y}`; }
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 
 function busStops() {
-  return state.tiles.filter(t => t.object?.type === "bus_stop");
+  return transitStops("bus");
+}
+
+function transitStops(mode = "bus") {
+  return state.tiles.filter(tile => tile.object?.transitMode === mode
+    || (mode === "bus" && tile.object?.type === "bus_stop"));
+}
+
+function syncTransitRoute(mode = "bus") {
+  const network = transitNetwork(mode);
+  const availableIds = new Set(transitStops(mode).map(tile => tile.object.stopId));
+  network.routeStopIds = network.routeStopIds.filter(stopId => availableIds.has(stopId));
+}
+
+function routeStops(mode = "bus") {
+  syncTransitRoute(mode);
+  const stopsById = new Map(transitStops(mode).map(tile => [tile.object.stopId, tile]));
+  return transitNetwork(mode).routeStopIds.map(stopId => stopsById.get(stopId)).filter(Boolean);
 }
 
 function nearestPathForTile(tile) {
   return neighbors(tile).find(t => t.path) || null;
 }
 
-function getBusRoute() {
-  const stops = busStops()
-    .map(nearestPathForTile)
-    .filter(Boolean);
-  if (!stops.length) return [];
-  const waypoints = [entrance, ...stops];
-  const route = [];
-  for (let i = 0; i < waypoints.length; i++) {
-    const a = waypoints[i];
-    const b = waypoints[(i + 1) % waypoints.length];
-    const segment = findPath(a, b);
-    const tiles = segment.length ? [a, ...segment] : [a];
-    for (const tile of tiles) {
-      if (route[route.length - 1] !== tile) route.push(tile);
-    }
+function getTransitRoutePlan(mode = "bus") {
+  const tiles = [entrance];
+  const markers = new Map();
+  const connectedStopIds = [];
+  let current = entrance;
+  for (const stopTile of routeStops(mode)) {
+    const target = nearestPathForTile(stopTile);
+    if (!target) continue;
+    const segment = target === current ? [] : findPath(current, target);
+    if (target !== current && !segment.length) continue;
+    for (const tile of segment) tiles.push(tile);
+    const markerIndex = tiles.length - 1;
+    const markerList = markers.get(markerIndex) || [];
+    markerList.push({ kind: "stop", stopId: stopTile.object.stopId });
+    markers.set(markerIndex, markerList);
+    connectedStopIds.push(stopTile.object.stopId);
+    current = target;
   }
-  return route;
+  if (current !== entrance) {
+    const returnSegment = findPath(current, entrance);
+    for (const tile of returnSegment) tiles.push(tile);
+  }
+  const entranceIndex = Math.max(0, tiles.lastIndexOf(entrance));
+  const entranceMarkers = markers.get(entranceIndex) || [];
+  entranceMarkers.push({ kind: "entrance" });
+  markers.set(entranceIndex, entranceMarkers);
+  return {
+    tiles,
+    markers,
+    connectedStopIds,
+    signature: `${mode}:${connectedStopIds.join("|")}:${tiles.map(key).join(";")}`
+  };
+}
+
+function getBusRoute() {
+  return getTransitRoutePlan("bus").tiles;
 }
 
 function sceneryScore() {
@@ -1333,7 +1574,16 @@ function sceneryScore() {
 function snapshotObject(object) {
   if (!object) return null;
   const saved = { type: object.type };
-  if (tools[object.type]?.ride) {
+  if (tools[object.type]?.transit) {
+    saved.transitMode = object.transitMode || "bus";
+    saved.stopId = object.stopId;
+    saved.name = object.name;
+    saved.waiting = Number(object.waiting) || 0;
+    saved.waitingAccumulator = Number(object.waitingAccumulator) || 0;
+    saved.usage = Number(object.usage) || 0;
+    saved.boarded = Number(object.boarded) || 0;
+    saved.lastBoarding = Number(object.lastBoarding) || 0;
+  } else if (tools[object.type]?.ride) {
     saved.timer = object.timer || 0;
     saved.totalRides = object.totalRides || 0;
     saved.condition = Number(object.condition ?? 100);
@@ -1349,6 +1599,7 @@ function snapshotObject(object) {
 
 function restoreObject(saved) {
   if (!saved || !tools[saved.type]) return null;
+  if (tools[saved.type].transit) return createTransitStop(saved.transitMode || "bus", saved);
   if (tools[saved.type].ride) {
     return {
       type: saved.type,
@@ -1395,6 +1646,7 @@ function saveGame() {
     finance: { ...state.finance },
     guestLog: state.guestLog,
     staff: { ...state.staff },
+    transit: cloneTransitState(),
     tiles: state.tiles.map(tile => ({
       terrain: tile.terrain,
       path: tile.path,
@@ -1448,10 +1700,10 @@ function loadGame() {
     };
     state.guests = [];
     state.buses = [];
-    busDropTimer = 0;
     spawnTimer = 0;
     incomeTimer = 0;
     expenseTimer = 0;
+    stopSequence = 0;
     save.tiles.forEach((savedTile, index) => {
       const tile = state.tiles[index];
       tile.terrain = savedTile.terrain === "water" ? "water" : "grass";
@@ -1459,6 +1711,8 @@ function loadGame() {
       tile.litter = Math.max(0, Number(savedTile.litter) || 0);
       tile.object = restoreObject(savedTile.object);
     });
+    restoreTransitState(save.transit);
+    transitRenderSignature = "";
     rebuildRideList();
     undoStack.length = 0;
     updateUndoButton();
@@ -1481,6 +1735,10 @@ function computeStats() {
     : 100;
   const scene = sceneryScore();
   const transit = busStops().length;
+  const transitNetworkState = transitNetwork("bus");
+  const transitWaiting = transitNetworkState.entranceWaiting
+    + busStops().reduce((sum, tile) => sum + Number(tile.object.waiting || 0), 0);
+  const transitCrowdingPenalty = Math.max(0, transitWaiting - transitNetworkState.fleet * TRANSIT_MODE_CONFIGS.bus.capacity) * .08;
   const served = state.guestsServed;
   const averageGuestSatisfaction = state.guests.length
     ? state.guests.reduce((sum, guest) => sum + clamp(Number(guest.satisfaction ?? 72), 0, 100), 0) / state.guests.length
@@ -1489,7 +1747,7 @@ function computeStats() {
   const debtPenalty = state.money < 0 ? 8 : 0;
   const joy = 44 + rides * 4 + scene * .18 + transit * 1.6 + served * .04 + state.clean * .12
     + state.staff.cleaners * .7 + state.staff.mechanics * .45 + state.sentiment + (averageGuestSatisfaction - 72) * .18
-    - queue * 1.8 - broken * 6 - admissionPenalty - debtPenalty;
+    - queue * 1.8 - broken * 6 - admissionPenalty - debtPenalty - transitCrowdingPenalty;
   state.happy = clamp(joy, 18, 100);
   const revenue = state.finance.admissionRevenue + state.finance.rideRevenue + state.finance.shopRevenue;
   const expenses = state.finance.maintenanceExpenses + state.finance.staffExpenses + state.finance.restockExpenses;
@@ -1525,6 +1783,61 @@ function computeStats() {
   ui.growthBar.style.width = `${clamp((rides * 16 + transit * 7 + served * .22), 4, 100)}%`;
   ui.loadBar.style.width = `${clamp(queue * 8 + state.guests.length * 2, 5, 100)}%`;
   ui.sceneBar.style.width = `${clamp(scene * 2, 7, 100)}%`;
+  renderTransitPanel();
+}
+
+function renderTransitPanel() {
+  const network = transitNetwork("bus");
+  const config = TRANSIT_MODE_CONFIGS.bus;
+  const stops = busStops();
+  const plan = getTransitRoutePlan("bus");
+  const routedIds = new Set(network.routeStopIds);
+  const connectedIds = new Set(plan.connectedStopIds);
+  const waiting = Math.floor(network.entranceWaiting + stops.reduce((sum, tile) => sum + Number(tile.object.waiting || 0), 0));
+  const passengers = state.buses.reduce((sum, bus) => sum + Number(bus.passengers || 0), 0);
+  const availableSeats = Math.max(1, state.buses.length * config.capacity);
+  const load = state.buses.length ? Math.round(passengers / availableSeats * 100) : 0;
+  const disconnected = network.routeStopIds.filter(stopId => !connectedIds.has(stopId)).length;
+  const status = !stops.length
+    ? "バス停なし"
+    : !network.routeStopIds.length
+      ? "路線未設定"
+      : disconnected
+        ? `未接続 ${disconnected}か所`
+        : waiting >= config.capacity * Math.max(1, network.fleet)
+          ? "混雑中"
+          : "運行中";
+  ui.transitStatus.textContent = status;
+  ui.busCount.textContent = network.fleet;
+  ui.busInterval.textContent = `${network.interval}秒`;
+  ui.transitWaiting.textContent = `${waiting}人`;
+  ui.transitLoad.textContent = `${load}%`;
+  ui.transitRiders.textContent = `${Math.floor(network.totalRiders)}人`;
+  ui.busMinus.disabled = network.fleet <= 1;
+  ui.busPlus.disabled = network.fleet >= 6;
+  ui.intervalMinus.disabled = network.interval <= config.minInterval;
+  ui.intervalPlus.disabled = network.interval >= config.maxInterval;
+
+  const ordered = routeStops("bus");
+  const unrouted = stops.filter(tile => !routedIds.has(tile.object.stopId));
+  const rows = [
+    ...ordered.map((tile, index) => {
+      const stop = tile.object;
+      const congested = stop.waiting >= config.capacity;
+      const connection = connectedIds.has(stop.stopId) ? "" : "・通路未接続";
+      return `<button class="route-stop-row${congested ? " congested" : ""}" data-stop-id="${stop.stopId}"><b>${index + 1}</b><span>${stop.name}</span><small>待${Math.floor(stop.waiting)}・利用${Math.floor(stop.usage)}${connection}</small></button>`;
+    }),
+    ...unrouted.map(tile => {
+      const stop = tile.object;
+      return `<button class="route-stop-row not-in-route" data-stop-id="${stop.stopId}"><b>＋</b><span>${stop.name}</span><small>路線外・利用${Math.floor(stop.usage)}</small></button>`;
+    })
+  ];
+  const html = rows.length ? rows.join("") : '<span class="route-empty">バス停を通路の隣に建設してください</span>';
+  const signature = `${status}:${network.fleet}:${network.interval}:${waiting}:${load}:${network.totalRiders}:${html}`;
+  if (signature !== transitRenderSignature) {
+    ui.routeList.innerHTML = html;
+    transitRenderSignature = signature;
+  }
 }
 
 function getPlacementStatus(tile, toolName = selectedTool) {
@@ -1559,6 +1872,8 @@ function captureHistoryState() {
   return {
     money: state.money,
     finance: { ...state.finance },
+    transit: cloneTransitState(),
+    stopSequence,
     selectedTileIndex: selectedTile ? state.tiles.indexOf(selectedTile) : -1,
     tiles: state.tiles.map(tile => ({
       terrain: tile.terrain,
@@ -1573,7 +1888,12 @@ function captureHistoryState() {
     guests: state.guests.map(guest => ({
       guest,
       data: { ...guest, pos: { ...guest.pos }, path: [...guest.path] }
-    }))
+    })),
+    transitStops: busStops().map(tile => ({
+      stop: tile.object,
+      data: { ...tile.object }
+    })),
+    buses: state.buses.map(bus => ({ ...bus }))
   };
 }
 
@@ -1596,11 +1916,16 @@ function undoLastBuild() {
   }
   state.money = snapshot.money;
   state.finance = { ...snapshot.finance };
+  state.transit = JSON.parse(JSON.stringify(snapshot.transit));
+  stopSequence = snapshot.stopSequence;
   snapshot.rides.forEach(({ ride, data }) => Object.assign(ride, data, { queue: [...data.queue], riders: [...data.riders] }));
   snapshot.guests.forEach(({ guest, data }) => Object.assign(guest, data, { pos: { ...data.pos }, path: [...data.path] }));
+  snapshot.transitStops.forEach(({ stop, data }) => Object.assign(stop, data));
   snapshot.tiles.forEach((saved, index) => Object.assign(state.tiles[index], saved));
   state.rides = snapshot.rides.map(item => item.ride);
   state.guests = snapshot.guests.map(item => item.guest);
+  state.buses = snapshot.buses.map(bus => ({ ...bus }));
+  transitRenderSignature = "";
   selectedTile = snapshot.selectedTileIndex >= 0 ? state.tiles[snapshot.selectedTileIndex] : null;
   inspect(selectedTile || entrance);
   computeStats();
@@ -1633,6 +1958,11 @@ function build(tile, options = {}) {
           guest.path = findPath(guest.tile, entrance);
         }
         state.rides = state.rides.filter(ride => ride !== removedRide);
+      }
+      if (tools[tile.object.type]?.transit) {
+        const network = transitNetwork(tile.object.transitMode || "bus");
+        network.routeStopIds = network.routeStopIds.filter(stopId => stopId !== tile.object.stopId);
+        state.buses = [];
       }
       tile.object = null;
       state.money += 60;
@@ -1669,6 +1999,11 @@ function build(tile, options = {}) {
       maxStock: tool.maxStock,
       price: tool.defaultPrice
     };
+  } else if (tool.transit) {
+    const mode = selectedTool === "bus_stop" ? "bus" : state.transit.activeMode;
+    tile.object = createTransitStop(mode);
+    registerTransitStop(tile.object);
+    state.buses = [];
   } else {
     tile.object = { type: selectedTool };
   }
@@ -1698,6 +2033,7 @@ function removeRange(from, to) {
 }
 
 function inspect(tile) {
+  if (!tile) tile = entrance;
   selectedTile = tile;
   let title = "芝生タイル";
   let body = "通路、ライド、景観、水辺を配置できる空き地です。";
@@ -1717,7 +2053,13 @@ function inspect(tile) {
       body = `${tile.object.broken ? "故障中。" : "稼働中。"}状態 ${Math.round(tile.object.condition ?? 100)}%、待ち列 ${tile.object.queue.length}人、乗車中 ${tile.object.riders.length}/${t.cap}人、運転回数 ${tile.object.totalRides}回。`;
       controls = `<div class="inline-economy"><span>乗車料金</span><div class="stepper"><button data-action="ride-price-down" title="乗車料金を下げる">−</button><b>$${tile.object.price}</b><button data-action="ride-price-up" title="乗車料金を上げる">＋</button></div></div>`;
     }
-    else if (t.transit) body = `バスが入口と停留所を巡回します。現在のバス停は ${busStops().length}か所で、ゲスト流入と満足度を少し高めます。`;
+    else if (t.transit) {
+      const stop = tile.object;
+      const network = transitNetwork(stop.transitMode || "bus");
+      const order = network.routeStopIds.indexOf(stop.stopId);
+      body = `${order >= 0 ? `停車順 ${order + 1}番。` : "現在は路線外です。"}待機 ${Math.floor(stop.waiting)}人、累計利用 ${Math.floor(stop.usage)}人、前回乗車 ${Math.floor(stop.lastBoarding)}人。`;
+      controls = `<div class="transit-stop-controls"><button data-action="route-toggle">${order >= 0 ? "路線から外す" : "路線に追加"}</button><button data-action="route-up" title="停車順を前へ" ${order <= 0 ? "disabled" : ""}>↑</button><button data-action="route-down" title="停車順を後へ" ${order < 0 || order >= network.routeStopIds.length - 1 ? "disabled" : ""}>↓</button></div>`;
+    }
     else if (t.shop) {
       const stock = Number(tile.object.stock ?? 0);
       const maxStock = Number(tile.object.maxStock ?? tools.kiosk.maxStock);
@@ -1987,6 +2329,85 @@ function restockSelectedKiosk() {
   toast(`商品を ${missing} 個補充しました`);
 }
 
+function transitStopTile(stopOrId = selectedTile) {
+  if (stopOrId?.object && tools[stopOrId.object.type]?.transit) return stopOrId;
+  const stopId = typeof stopOrId === "string" ? stopOrId : stopOrId?.stopId;
+  return state.tiles.find(tile => tile.object?.stopId === stopId) || null;
+}
+
+function toggleStopInRoute(stopOrId = selectedTile) {
+  const tile = transitStopTile(stopOrId);
+  if (!tile) return false;
+  const stop = tile.object;
+  const network = transitNetwork(stop.transitMode || "bus");
+  const historyBefore = captureHistoryState();
+  const index = network.routeStopIds.indexOf(stop.stopId);
+  if (index >= 0) network.routeStopIds.splice(index, 1);
+  else network.routeStopIds.push(stop.stopId);
+  state.buses = [];
+  transitRenderSignature = "";
+  pushUndo(historyBefore);
+  inspect(tile);
+  computeStats();
+  toast(index >= 0 ? `${stop.name}を路線から外しました` : `${stop.name}を路線に追加しました`);
+  return true;
+}
+
+function moveStopInRoute(stopOrId = selectedTile, delta = 0) {
+  const tile = transitStopTile(stopOrId);
+  if (!tile || !delta) return false;
+  const stop = tile.object;
+  const network = transitNetwork(stop.transitMode || "bus");
+  const from = network.routeStopIds.indexOf(stop.stopId);
+  const to = clamp(from + Math.sign(delta), 0, network.routeStopIds.length - 1);
+  if (from < 0 || from === to) return false;
+  const historyBefore = captureHistoryState();
+  [network.routeStopIds[from], network.routeStopIds[to]] = [network.routeStopIds[to], network.routeStopIds[from]];
+  state.buses = [];
+  transitRenderSignature = "";
+  pushUndo(historyBefore);
+  inspect(tile);
+  computeStats();
+  toast(`${stop.name}を停車順 ${to + 1}番へ移動しました`);
+  return true;
+}
+
+function adjustBusFleet(delta) {
+  const network = transitNetwork("bus");
+  const config = TRANSIT_MODE_CONFIGS.bus;
+  const next = clamp(network.fleet + Math.sign(delta), 1, 6);
+  if (next === network.fleet) return false;
+  if (next > network.fleet && state.money < config.vehicleCost) {
+    toast("バスの購入資金が足りません");
+    return false;
+  }
+  const historyBefore = captureHistoryState();
+  if (next > network.fleet) state.money -= config.vehicleCost;
+  else state.money += config.vehicleRefund;
+  network.fleet = next;
+  state.buses = [];
+  transitRenderSignature = "";
+  pushUndo(historyBefore);
+  computeStats();
+  toast(next > historyBefore.transit.networks.bus.fleet ? "バスを1台購入しました" : "バスを1台売却しました");
+  return true;
+}
+
+function adjustBusInterval(delta) {
+  const network = transitNetwork("bus");
+  const config = TRANSIT_MODE_CONFIGS.bus;
+  const next = clamp(network.interval + Math.sign(delta), config.minInterval, config.maxInterval);
+  if (next === network.interval) return false;
+  const historyBefore = captureHistoryState();
+  network.interval = next;
+  state.buses = [];
+  transitRenderSignature = "";
+  pushUndo(historyBefore);
+  computeStats();
+  toast(`運行間隔を ${next}秒に設定しました`);
+  return true;
+}
+
 ui.pauseBtn.addEventListener("click", () => {
   paused = !paused;
   ui.pauseBtn.textContent = paused ? "再開" : "停止";
@@ -2018,13 +2439,25 @@ ui.cleanerMinus.addEventListener("click", () => adjustStaff("cleaners", -1));
 ui.cleanerPlus.addEventListener("click", () => adjustStaff("cleaners", 1));
 ui.mechanicMinus.addEventListener("click", () => adjustStaff("mechanics", -1));
 ui.mechanicPlus.addEventListener("click", () => adjustStaff("mechanics", 1));
+ui.busMinus.addEventListener("click", () => adjustBusFleet(-1));
+ui.busPlus.addEventListener("click", () => adjustBusFleet(1));
+ui.intervalMinus.addEventListener("click", () => adjustBusInterval(-1));
+ui.intervalPlus.addEventListener("click", () => adjustBusInterval(1));
 ui.admissionMinus.addEventListener("click", () => adjustAdmissionFee(-1));
 ui.admissionPlus.addEventListener("click", () => adjustAdmissionFee(1));
+ui.routeList.addEventListener("click", event => {
+  const stopId = event.target.closest("[data-stop-id]")?.dataset.stopId;
+  const tile = transitStopTile(stopId);
+  if (tile) inspect(tile);
+});
 ui.selected.addEventListener("click", event => {
   const action = event.target.closest("[data-action]")?.dataset.action;
   if (action === "ride-price-down" || action === "shop-price-down") adjustSelectedPrice(-1);
   if (action === "ride-price-up" || action === "shop-price-up") adjustSelectedPrice(1);
   if (action === "restock") restockSelectedKiosk();
+  if (action === "route-toggle") toggleStopInRoute();
+  if (action === "route-up") moveStopInRoute(selectedTile, -1);
+  if (action === "route-down") moveStopInRoute(selectedTile, 1);
 });
 
 window.addEventListener("keydown", e => {
@@ -2084,6 +2517,12 @@ window.parkDebug = {
       finance: { ...state.finance },
       buses: state.buses.length,
       busStops: busStops().length,
+      busFleet: transitNetwork("bus").fleet,
+      busInterval: transitNetwork("bus").interval,
+      transitRoute: [...transitNetwork("bus").routeStopIds],
+      transitWaiting: Math.floor(transitNetwork("bus").entranceWaiting
+        + busStops().reduce((sum, tile) => sum + Number(tile.object.waiting || 0), 0)),
+      transitRiders: Math.floor(transitNetwork("bus").totalRiders),
       paths: state.tiles.filter(t => t.path).length,
       scenery: sceneryScore()
     };
@@ -2091,6 +2530,12 @@ window.parkDebug = {
   saveGame,
   loadGame,
   adjustAdmissionFee,
+  adjustBusFleet,
+  adjustBusInterval,
+  toggleStopInRoute,
+  moveStopInRoute,
+  getTransitRoutePlan,
+  renderTransitPanel,
   adjustSelectedPrice,
   restockSelectedKiosk,
   inspect,
