@@ -47,7 +47,7 @@ const element = id => {
 element("game").getContext = () => context2d;
 
 const toolNames = [
-  "inspect", "path", "remove", "bus_stop", "carousel", "wheel", "coaster",
+  "inspect", "path", "remove", "bus_stop", "monorail_track", "monorail_station", "carousel", "wheel", "coaster",
   "teacups", "kiosk", "tree", "shrub", "flower", "palm", "water", "decor"
 ];
 const toolButtons = new Map(toolNames.map(name => {
@@ -142,9 +142,13 @@ const roundBefore = state.round;
 element("roundBtn").click();
 assert.equal(state.round, roundBefore + 1);
 assert.ok(Object.values(state.finance).every(value => value === 0));
+assert.equal(element("roundReport").hidden, false);
+element("continueReportBtn").click();
 const postBonusMoney = state.money;
 element("roundBtn").click();
+element("continueReportBtn").click();
 element("roundBtn").click();
+element("continueReportBtn").click();
 assert.equal(state.round, roundBefore + 3);
 assert.equal(state.money, postBonusMoney, "empty rounds must not generate free cash");
 
@@ -271,14 +275,104 @@ assert.equal(state.transit.networks.bus.totalRiders, savedTransit.riders);
 assert.ok(busStopTiles.some(tile => tile.object.usage > 0), "stop usage should survive save/load");
 
 state.guests = [];
+state.money = 100000;
 const candidates = state.tiles.filter(tile => !tile.object && !tile.path && tile.terrain !== "water").slice(0, 8);
 const baseCost = debug.operatingCostBreakdown().total;
+state.progression.bestStars = 1;
+state.progression.unlockedTools = [];
+assert.equal(debug.setTool("coaster"), false, "advanced rides should stay locked at one star");
+const unlockedAtThreeStars = debug.reconcileParkUnlocks({ stars: 3 }, false);
+assert.ok(unlockedAtThreeStars.includes("観覧車"));
+assert.ok(unlockedAtThreeStars.includes("コースター"));
+assert.equal(debug.setTool("coaster"), true);
 for (const tile of candidates) debug.buildAt(tile.x, tile.y, "coaster");
 assert.ok(debug.operatingCostBreakdown().total >= baseCost + candidates.length * 45);
+
+const monorailCostBefore = debug.operatingCostBreakdown().transit;
+const unlockedAtFourStars = debug.reconcileParkUnlocks({ stars: 4 }, false);
+assert.ok(unlockedAtFourStars.includes("高架レール"));
+assert.ok(unlockedAtFourStars.includes("モノレール駅"));
+for (let y = 10; y <= 17; y++) debug.buildAt(8, y, "monorail_track");
+assert.equal(state.tiles.find(tile => tile.x === 8 && tile.y === 14).path, true, "elevated rail should preserve the path below");
+assert.equal(state.tiles.find(tile => tile.x === 8 && tile.y === 14).transitTrack, "monorail");
+debug.buildAt(7, 10, "monorail_station");
+debug.buildAt(9, 17, "monorail_station");
+const monorailStations = state.tiles.filter(tile => tile.object?.type === "monorail_station");
+assert.equal(monorailStations.length, 2);
+assert.equal(debug.getTransitRoutePlan("monorail").connectedStopIds.length, 2);
+assert.ok(debug.operatingCostBreakdown().transit > monorailCostBefore);
+for (const stationTile of monorailStations) stationTile.object.waiting = 24;
+state.admissionFee = 0;
+for (let i = 0; i < 1200; i++) debug.update(.05);
+assert.equal(state.monorails.length, 1);
+assert.ok(state.transit.networks.monorail.totalRiders > 0);
+assert.ok(monorailStations.some(tile => tile.object.usage > 0));
+
+debug.buildAt(8, 18, "monorail_track");
+assert.equal(state.tiles.find(tile => tile.x === 8 && tile.y === 18).transitTrack, "monorail");
+debug.undoLastBuild();
+assert.equal(state.tiles.find(tile => tile.x === 8 && tile.y === 18).transitTrack, null, "rail construction should be undoable");
 
 state.admissionFee = 75;
 state.money = 3000;
 for (let i = 0; i < 8; i++) debug.update(9);
 assert.ok(state.money < 0, "overbuilding should produce a cash deficit without guests");
+
+state.clean = 100;
+state.happy = 100;
+state.transit.networks.bus.totalRiders = 500;
+state.transit.networks.bus.entranceWaiting = 0;
+for (const tile of busStopTiles) tile.object.waiting = 0;
+state.guestsServed += 12;
+state.progression.roundStartServed = state.guestsServed - 12;
+state.progression.activeGoalIds = ["profit", "guests", "clean"];
+state.progression.completedGoalIds = [];
+Object.keys(state.finance).forEach(key => { state.finance[key] = 0; });
+state.finance.admissionRevenue = 10000;
+const goalMoneyBefore = state.money;
+const fiveStarReport = debug.settleRound();
+assert.equal(fiveStarReport.rating.stars, 5);
+assert.equal(fiveStarReport.goalReward, 1850);
+assert.equal(state.progression.bestStars, 5);
+assert.deepEqual([...state.progression.completedGoalIds].sort(), ["clean", "guests", "profit"]);
+assert.ok(state.money > goalMoneyBefore + fiveStarReport.goalReward);
+assert.equal(element("roundReport").hidden, false);
+debug.closeRoundReport();
+debug.update(.1);
+assert.equal(state.monorails.length, 2, "five-star parks should run a second monorail train");
+
+const followupReport = debug.settleRound();
+assert.equal(followupReport.goalReward, 1800, "newly active achievements should pay once");
+assert.equal(followupReport.ratingBonus, 0);
+debug.closeRoundReport();
+
+const moneyBeforeEmptyRound = state.money;
+const emptyReport = debug.settleRound();
+assert.equal(emptyReport.goalReward, 0, "completed goals must not pay repeatedly");
+assert.equal(emptyReport.ratingBonus, 0, "an empty round must not receive rating rewards");
+assert.equal(state.money, moneyBeforeEmptyRound);
+debug.closeRoundReport();
+
+debug.saveGame();
+state.progression.bestStars = 1;
+state.progression.completedGoalIds = [];
+debug.loadGame();
+assert.equal(state.progression.bestStars, 5);
+assert.equal(state.tiles.filter(tile => tile.transitTrack === "monorail").length, 8);
+assert.equal(state.tiles.filter(tile => tile.object?.type === "monorail_station").length, 2);
+assert.deepEqual([...state.progression.completedGoalIds].sort(), ["clean", "guests", "profit", "ride_variety", "transit"]);
+assert.deepEqual(state.progression.activeGoalIds, ["satisfaction"]);
+
+const modernSave = storage.get("yumeshimaParkSaveV1");
+const legacySave = JSON.parse(modernSave);
+delete legacySave.progression;
+storage.set("yumeshimaParkSaveV1", JSON.stringify(legacySave));
+debug.loadGame();
+assert.ok(state.progression.bestStars >= 1);
+assert.ok(state.progression.activeGoalIds.length > 0);
+assert.ok(state.progression.unlockedTools.includes("coaster"), "existing advanced rides should migrate as unlocked");
+storage.set("yumeshimaParkSaveV1", modernSave);
+debug.loadGame();
+assert.equal(state.progression.bestStars, 5);
 
 console.log("economy smoke test: OK", JSON.stringify(debug.summary()));

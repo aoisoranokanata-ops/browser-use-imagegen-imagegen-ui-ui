@@ -29,6 +29,22 @@ const ui = {
   runningCost: document.getElementById("runningCost"),
   brokenCount: document.getElementById("brokenCount"),
   conditionAverage: document.getElementById("conditionAverage"),
+  ratingStars: document.getElementById("ratingStars"),
+  ratingScore: document.getElementById("ratingScore"),
+  ratingExperience: document.getElementById("ratingExperience"),
+  ratingFinance: document.getElementById("ratingFinance"),
+  ratingFacilities: document.getElementById("ratingFacilities"),
+  ratingScenery: document.getElementById("ratingScenery"),
+  ratingTransit: document.getElementById("ratingTransit"),
+  goalList: document.getElementById("goalList"),
+  nextUnlock: document.getElementById("nextUnlock"),
+  roundReport: document.getElementById("roundReport"),
+  reportRound: document.getElementById("reportRound"),
+  reportStars: document.getElementById("reportStars"),
+  reportSummary: document.getElementById("reportSummary"),
+  reportAchievements: document.getElementById("reportAchievements"),
+  closeReportBtn: document.getElementById("closeReportBtn"),
+  continueReportBtn: document.getElementById("continueReportBtn"),
   busMinus: document.getElementById("busMinus"),
   busPlus: document.getElementById("busPlus"),
   busCount: document.getElementById("busCount"),
@@ -40,6 +56,9 @@ const ui = {
   transitLoad: document.getElementById("transitLoad"),
   transitRiders: document.getElementById("transitRiders"),
   routeList: document.getElementById("routeList"),
+  monorailStatus: document.getElementById("monorailStatus"),
+  monorailStations: document.getElementById("monorailStations"),
+  monorailRiders: document.getElementById("monorailRiders"),
   admissionMinus: document.getElementById("admissionMinus"),
   admissionPlus: document.getElementById("admissionPlus"),
   admissionFee: document.getElementById("admissionFee"),
@@ -76,13 +95,40 @@ const TRANSIT_MODE_CONFIGS = {
     vehicleUpkeep: 22,
     minInterval: 3,
     maxInterval: 15
+  },
+  monorail: {
+    label: "モノレール",
+    stopTool: "monorail_station",
+    capacity: 24,
+    vehicleUpkeep: 65,
+    minInterval: 7,
+    maxInterval: 14
   }
 };
+const TOOL_UNLOCK_STARS = { wheel: 2, coaster: 3, monorail_track: 4, monorail_station: 4 };
+const UNLOCK_DEFINITIONS = [
+  { stars: 2, label: "観覧車", tool: "wheel" },
+  { stars: 3, label: "コースター", tool: "coaster" },
+  { stars: 4, label: "モノレール交通", tool: "monorail_station" },
+  { stars: 4, label: "名門パーク報奨 +15%" },
+  { stars: 5, label: "ワールドクラス報奨 $500" }
+];
+const GOAL_DEFINITIONS = {
+  profit: { label: "ラウンド収支を黒字に", target: 500, reward: 700, value: metrics => Math.max(0, metrics.net), format: value => `$${Math.round(value).toLocaleString()}` },
+  guests: { label: "ゲストを12人迎える", target: 12, reward: 650, value: metrics => metrics.roundGuests, format: value => `${Math.floor(value)}人` },
+  clean: { label: "3人以上を迎え清潔さ90%", target: 90, reward: 500, value: metrics => metrics.roundGuests >= 3 ? metrics.clean : 0, format: value => `${Math.round(value)}%` },
+  satisfaction: { label: "3人以上を迎え満足度85%", target: 85, reward: 800, value: metrics => metrics.roundGuests >= 3 ? metrics.happy : 0, format: value => `${Math.round(value)}%` },
+  ride_variety: { label: "3種類のライドを運営", target: 3, reward: 900, value: metrics => metrics.rideTypes, format: value => `${Math.floor(value)}種類` },
+  transit: { label: "交通利用を30人まで伸ばす", target: 30, reward: 900, value: metrics => metrics.transitRiders, format: value => `${Math.floor(value)}人` }
+};
+const GOAL_ORDER = ["profit", "guests", "clean", "satisfaction", "ride_variety", "transit"];
 const tools = {
   inspect: { cost: 0, label: "調べる" },
   path: { cost: 80, label: "通路" },
   remove: { cost: 0, label: "撤去" },
   bus_stop: { cost: 650, label: "バス停", transit: true, scenery: 2 },
+  monorail_track: { cost: 220, label: "高架レール", trackMode: "monorail" },
+  monorail_station: { cost: 2400, label: "モノレール駅", transit: true, transitMode: "monorail", scenery: 8 },
   carousel: { cost: 1800, label: "メリーゴーランド", ride: true, cap: 7, duration: 9, appeal: 18, upkeep: 18, defaultPrice: 7, color: "#ef6f61" },
   wheel: { cost: 3200, label: "観覧車", ride: true, cap: 10, duration: 13, appeal: 27, upkeep: 28, defaultPrice: 10, color: "#49abc2" },
   coaster: { cost: 4800, label: "コースター", ride: true, cap: 12, duration: 10, appeal: 36, upkeep: 45, defaultPrice: 14, color: "#f1b84f" },
@@ -115,6 +161,7 @@ let selectedTile = null;
 let selectedTool = "inspect";
 let selectedHero = localStorage.getItem("parkHero") || "male";
 let paused = false;
+let pausedBeforeReport = false;
 let last = performance.now();
 let spawnTimer = 0;
 let incomeTimer = 0;
@@ -123,6 +170,7 @@ let toastTimer = 0;
 let guestSequence = 0;
 let stopSequence = 0;
 let transitRenderSignature = "";
+let progressionRenderSignature = "";
 const undoStack = [];
 
 const state = {
@@ -147,6 +195,7 @@ const state = {
   guests: [],
   rides: [],
   buses: [],
+  monorails: [],
   guestLog: [],
   transit: {
     activeMode: "bus",
@@ -158,15 +207,31 @@ const state = {
         totalRiders: 0,
         entranceWaiting: 3,
         demandAccumulator: 0
+      },
+      monorail: {
+        routeStopIds: [],
+        fleet: 1,
+        interval: 9,
+        totalRiders: 0,
+        entranceWaiting: 0,
+        demandAccumulator: 0
       }
     }
+  },
+  progression: {
+    bestStars: 1,
+    unlockedTools: [],
+    activeGoalIds: ["profit", "guests", "clean"],
+    completedGoalIds: [],
+    roundStartServed: 0,
+    reports: []
   }
 };
 
 function makeTile(x, y) {
   const pond = x > 20 && y > 18 && x + y < 48;
   const baseTerrain = pond ? "water" : "grass";
-  return { x, y, terrain: baseTerrain, baseTerrain, object: null, path: false, litter: 0 };
+  return { x, y, terrain: baseTerrain, baseTerrain, object: null, path: false, transitTrack: null, litter: 0 };
 }
 
 for (let y = 0; y < H; y++) {
@@ -246,29 +311,39 @@ function registerTransitStop(stop) {
   if (!network.routeStopIds.includes(stop.stopId)) network.routeStopIds.push(stop.stopId);
 }
 
+function resetTransitVehicles(mode) {
+  if (mode === "monorail") state.monorails = [];
+  else state.buses = [];
+}
+
 function cloneTransitState() {
   return JSON.parse(JSON.stringify(state.transit));
 }
 
 function restoreTransitState(savedTransit) {
-  const config = TRANSIT_MODE_CONFIGS.bus;
-  const savedBus = savedTransit?.networks?.bus;
-  const stopIds = busStops().map(tile => tile.object.stopId);
+  const restoreNetwork = mode => {
+    const config = TRANSIT_MODE_CONFIGS[mode];
+    const savedNetwork = savedTransit?.networks?.[mode];
+    const stopIds = transitStops(mode).map(tile => tile.object.stopId);
+    return {
+      routeStopIds: Array.isArray(savedNetwork?.routeStopIds) ? [...savedNetwork.routeStopIds] : [...stopIds],
+      fleet: clamp(Math.round(Number(savedNetwork?.fleet ?? 1)), 1, mode === "bus" ? 6 : 2),
+      interval: clamp(Number(savedNetwork?.interval ?? (mode === "bus" ? 7 : 9)), config.minInterval, config.maxInterval),
+      totalRiders: Math.max(0, Number(savedNetwork?.totalRiders) || 0),
+      entranceWaiting: clamp(Number(savedNetwork?.entranceWaiting ?? (mode === "bus" ? 3 : 0)), 0, 60),
+      demandAccumulator: clamp(Number(savedNetwork?.demandAccumulator) || 0, 0, .999),
+      crowdingEvents: Math.max(0, Number(savedNetwork?.crowdingEvents) || 0)
+    };
+  };
   state.transit = {
     activeMode: TRANSIT_MODE_CONFIGS[savedTransit?.activeMode] ? savedTransit.activeMode : "bus",
     networks: {
-      bus: {
-        routeStopIds: Array.isArray(savedBus?.routeStopIds) ? [...savedBus.routeStopIds] : [...stopIds],
-        fleet: clamp(Math.round(Number(savedBus?.fleet ?? 1)), 1, 6),
-        interval: clamp(Number(savedBus?.interval ?? 7), config.minInterval, config.maxInterval),
-        totalRiders: Math.max(0, Number(savedBus?.totalRiders) || 0),
-        entranceWaiting: clamp(Number(savedBus?.entranceWaiting ?? 3), 0, 60),
-        demandAccumulator: clamp(Number(savedBus?.demandAccumulator) || 0, 0, .999),
-        crowdingEvents: Math.max(0, Number(savedBus?.crowdingEvents) || 0)
-      }
+      bus: restoreNetwork("bus"),
+      monorail: restoreNetwork("monorail")
     }
   };
   syncTransitRoute("bus");
+  syncTransitRoute("monorail");
 }
 
 function resize() {
@@ -342,6 +417,7 @@ function drawWorld() {
     if (tile.path) drawPathTrim(p.x, p.y);
     if (tile.terrain === "water") drawWater(p.x, p.y);
     if (tile.litter > 0.5) drawLitter(p.x, p.y, tile.litter);
+    if (tile.transitTrack === "monorail") drawMonorailTrack(tile);
     if (tile.object) drawObject(tile, p);
     if (isTileInRemovalRange(tile)) {
       const valid = getPlacementStatus(tile, "remove").valid;
@@ -351,6 +427,7 @@ function drawWorld() {
   }
   drawTransitRoute();
   drawBuses();
+  drawMonorails();
   drawGuests();
 }
 
@@ -375,6 +452,39 @@ function drawTransitRoute() {
   });
   ctx.stroke();
   ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawMonorailTrack(tile) {
+  const z = camera.zoom;
+  const ground = iso(tile.x + .5, tile.y + .5);
+  const elevated = iso(tile.x + .5, tile.y + .5, 30);
+  ctx.save();
+  ctx.strokeStyle = "rgba(38,49,63,.48)";
+  ctx.lineWidth = 3 * z;
+  ctx.beginPath();
+  ctx.moveTo(ground.x, ground.y + 2 * z);
+  ctx.lineTo(elevated.x, elevated.y + 4 * z);
+  ctx.stroke();
+  ctx.fillStyle = "#fff7df";
+  ctx.beginPath();
+  ctx.ellipse(ground.x, ground.y + 4 * z, 7 * z, 3 * z, 0, 0, Math.PI * 2);
+  ctx.fill();
+  for (const neighbor of neighbors(tile).filter(candidate => candidate.transitTrack === "monorail")) {
+    const next = iso(neighbor.x + .5, neighbor.y + .5, 30);
+    ctx.strokeStyle = "rgba(38,49,63,.28)";
+    ctx.lineWidth = 8 * z;
+    ctx.beginPath();
+    ctx.moveTo(elevated.x, elevated.y);
+    ctx.lineTo(next.x, next.y);
+    ctx.stroke();
+    ctx.strokeStyle = "#fff7df";
+    ctx.lineWidth = 4 * z;
+    ctx.stroke();
+    ctx.strokeStyle = "#49abc2";
+    ctx.lineWidth = 1.5 * z;
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
@@ -428,6 +538,11 @@ function drawPlacementPreview(tile, p) {
     drawPathTrim(p.x, p.y);
     return;
   }
+  if (selectedTool === "monorail_track") {
+    diamond(p.x, p.y, "rgba(73,171,194,.18)", "rgba(69,145,88,.9)");
+    drawMonorailTrack({ ...tile, transitTrack: "monorail" });
+    return;
+  }
   if (selectedTool === "water") {
     diamond(p.x, p.y, "rgba(89,185,200,.72)", "rgba(69,145,88,.9)");
     drawWater(p.x, p.y);
@@ -459,12 +574,36 @@ function drawObject(tile, p) {
   const type = tile.object.type;
   if (tools[type]?.ride) drawRide(type, p, tile.object);
   if (type === "bus_stop") drawBusStop(p, tile.object);
+  if (type === "monorail_station") drawMonorailStation(p, tile.object);
   if (type === "kiosk") drawKiosk(p, tile.object);
   if (type === "tree") drawTree(p);
   if (type === "shrub") drawShrub(p);
   if (type === "flower") drawFlowerBed(p);
   if (type === "palm") drawPalm(p);
   if (type === "decor") drawDecor(p);
+}
+
+function drawMonorailStation(p, stop = {}) {
+  const z = camera.zoom;
+  ctx.save();
+  ctx.translate(p.x, p.y + 18 * z);
+  drawSoftShadow(0, 4 * z, 31 * z, 10 * z, .16);
+  ctx.fillStyle = "#26313f";
+  ctx.fillRect(-23 * z, -31 * z, 4 * z, 34 * z);
+  ctx.fillRect(19 * z, -31 * z, 4 * z, 34 * z);
+  ctx.fillStyle = "#fff7df";
+  roundRect(-31 * z, -39 * z, 62 * z, 13 * z, 3 * z);
+  ctx.fill();
+  ctx.strokeStyle = "#49abc2";
+  ctx.lineWidth = 3 * z;
+  ctx.stroke();
+  ctx.fillStyle = "#ef6f61";
+  roundRect(-17 * z, -25 * z, 34 * z, 8 * z, 2 * z);
+  ctx.fill();
+  const order = transitNetwork("monorail")?.routeStopIds.indexOf(stop.stopId) ?? -1;
+  if (order >= 0) drawRideStatusBadge(String(order + 1), -36 * z, -57 * z, "#26313f");
+  if (Number(stop.waiting || 0) > 0) drawRideStatusBadge(String(Math.floor(stop.waiting)), 5 * z, -57 * z, stop.waiting >= 18 ? "#d84f4f" : "#49abc2");
+  ctx.restore();
 }
 
 function drawSoftShadow(x, y, rx, ry, alpha = .18) {
@@ -892,6 +1031,45 @@ function drawBuses() {
   }
 }
 
+function drawMonorails() {
+  const route = getTransitRoutePlan("monorail").tiles;
+  if (route.length < 2 || !state.monorails.length) return;
+  for (const train of state.monorails) {
+    const index = Math.floor(train.distance) % route.length;
+    const nextIndex = (index + 1) % route.length;
+    const progress = train.distance - Math.floor(train.distance);
+    const from = route[index];
+    const to = route[nextIndex];
+    const x = from.x + (to.x - from.x) * progress + .5;
+    const y = from.y + (to.y - from.y) * progress + .5;
+    const p = iso(x, y, 36);
+    drawMonorailVehicle(p.x, p.y, to.x - from.x, to.y - from.y, train);
+  }
+}
+
+function drawMonorailVehicle(x, y, dx, dy, train) {
+  const z = camera.zoom;
+  const horizontal = Math.abs(dx) >= Math.abs(dy);
+  ctx.save();
+  ctx.translate(x, y);
+  drawSoftShadow(0, 12 * z, 24 * z, 5 * z, .2);
+  ctx.fillStyle = "#fff7df";
+  roundRect(-25 * z, -10 * z, 50 * z, 18 * z, 7 * z);
+  ctx.fill();
+  ctx.strokeStyle = "#26313f";
+  ctx.lineWidth = 1.5 * z;
+  ctx.stroke();
+  ctx.fillStyle = "#49abc2";
+  roundRect(-18 * z, -7 * z, 28 * z, 7 * z, 2 * z);
+  ctx.fill();
+  ctx.fillStyle = "#ef6f61";
+  ctx.fillRect(horizontal ? -25 * z : 19 * z, 1 * z, 6 * z, 4 * z);
+  ctx.fillStyle = "#26313f";
+  ctx.fillRect(-5 * z, 8 * z, 10 * z, 5 * z);
+  if (train.passengers > 0) drawRideStatusBadge(String(train.passengers), 7 * z, -27 * z, train.passengers >= TRANSIT_MODE_CONFIGS.monorail.capacity ? "#d84f4f" : "#26313f");
+  ctx.restore();
+}
+
 function drawBus(x, y, dx, dy, bus = {}) {
   const z = camera.zoom;
   const horizontal = Math.abs(dx) >= Math.abs(dy);
@@ -1024,6 +1202,7 @@ function update(dt) {
     spawnGuest();
   }
   updateBuses(dt);
+  updateMonorails(dt);
   for (const ride of state.rides) updateRide(ride, dt);
   for (const guest of state.guests) updateGuest(guest, dt);
   if (incomeTimer > 3.2) {
@@ -1059,7 +1238,11 @@ function operatingCostBreakdown() {
   const busNetwork = transitNetwork("bus");
   const busConfig = TRANSIT_MODE_CONFIGS.bus;
   const frequencyPremium = Math.max(0, 8 - busNetwork.interval) * 5;
-  const transit = busStops().length * 6 + busNetwork.fleet * busConfig.vehicleUpkeep + frequencyPremium;
+  const monorailNetwork = transitNetwork("monorail");
+  const monorailConfig = TRANSIT_MODE_CONFIGS.monorail;
+  const railTiles = state.tiles.filter(tile => tile.transitTrack === "monorail").length;
+  const monorail = transitStops("monorail").length * 18 + railTiles * 2 + monorailNetwork.fleet * monorailConfig.vehicleUpkeep;
+  const transit = busStops().length * 6 + busNetwork.fleet * busConfig.vehicleUpkeep + frequencyPremium + monorail;
   return { maintenance, staff, transit, total: Math.round(maintenance + staff + transit) };
 }
 
@@ -1087,6 +1270,54 @@ function updateBuses(dt) {
       for (const marker of markers) serviceTransitMarker(bus, marker, network, config);
     }
   }
+}
+
+function updateMonorails(dt) {
+  const mode = "monorail";
+  const network = transitNetwork(mode);
+  const config = TRANSIT_MODE_CONFIGS[mode];
+  const plan = getTransitRoutePlan(mode);
+  network.fleet = state.progression.bestStars >= 5 ? 2 : 1;
+  updateRailDemand(mode, network, dt);
+  if (plan.connectedStopIds.length < 2 || plan.tiles.length < 2) {
+    state.monorails = [];
+    return;
+  }
+  syncMonorailFleet(network, plan);
+  const speed = clamp(plan.tiles.length / Math.max(1, network.interval * network.fleet), .9, 4);
+  for (const train of state.monorails) {
+    const oldIndex = Math.floor(train.distance) % plan.tiles.length;
+    train.distance = (train.distance + dt * speed) % plan.tiles.length;
+    const nextIndex = Math.floor(train.distance) % plan.tiles.length;
+    if (nextIndex !== oldIndex) {
+      for (const marker of plan.markers.get(nextIndex) || []) serviceTransitMarker(train, marker, network, config, mode);
+    }
+  }
+}
+
+function syncMonorailFleet(network, plan) {
+  const signature = `${network.routeStopIds.join("|")}:${plan.tiles.length}:${network.fleet}`;
+  if (state.monorails.length === network.fleet && state.monorails.every(train => train.routeSignature === signature)) return;
+  state.monorails = Array.from({ length: network.fleet }, (_, index) => ({
+    id: `monorail-${index + 1}`,
+    distance: plan.tiles.length * index / Math.max(1, network.fleet),
+    passengers: 0,
+    lastStopId: null,
+    routeSignature: signature
+  }));
+}
+
+function updateRailDemand(mode, network, dt) {
+  const stations = transitStops(mode);
+  for (const stationTile of stations) {
+    const station = stationTile.object;
+    station.waitingAccumulator = Number(station.waitingAccumulator || 0) + dt * (.08 + state.guests.length * .004 + state.round * .003);
+    while (station.waitingAccumulator >= 1) {
+      station.waitingAccumulator--;
+      station.waiting = Math.min(48, Number(station.waiting || 0) + 1);
+    }
+  }
+  network.demandAccumulator = (Number(network.demandAccumulator) + dt) % 1;
 }
 
 function syncBusFleet(network, plan) {
@@ -1117,7 +1348,7 @@ function updateTransitDemand(network, dt) {
   }
 }
 
-function serviceTransitMarker(bus, marker, network, config) {
+function serviceTransitMarker(bus, marker, network, config, mode = "bus") {
   if (marker.kind === "entrance") {
     bus.passengers = 0;
     const boarded = Math.min(config.capacity, Math.floor(network.entranceWaiting));
@@ -1127,12 +1358,13 @@ function serviceTransitMarker(bus, marker, network, config) {
     if (network.entranceWaiting > 0 && boarded >= config.capacity) network.crowdingEvents = Number(network.crowdingEvents || 0) + 1;
     return;
   }
-  const stop = busStops().find(candidate => candidate.object.stopId === marker.stopId)?.object;
+  const stopTile = transitStops(mode).find(candidate => candidate.object.stopId === marker.stopId);
+  const stop = stopTile?.object;
   if (!stop) return;
   const alighting = Math.min(bus.passengers, Math.max(1, Math.round(bus.passengers * (.45 + Math.random() * .25))));
   bus.passengers -= alighting;
   stop.usage += alighting;
-  const startTile = nearestPathForTile(state.tiles.find(tile => tile.object === stop)) || entrance;
+  const startTile = nearestPathForTile(stopTile) || entrance;
   for (let i = 0; i < alighting && state.guests.length < 18 + state.round * 6; i++) spawnGuestAt(startTile);
   const boarded = Math.min(Math.floor(stop.waiting), config.capacity - bus.passengers);
   stop.waiting -= boarded;
@@ -1529,7 +1761,73 @@ function nearestPathForTile(tile) {
   return neighbors(tile).find(t => t.path) || null;
 }
 
+function nearestTrackForTile(tile, mode = "monorail") {
+  return neighbors(tile).find(candidate => candidate.transitTrack === mode) || null;
+}
+
+function findTrackPath(start, goal, mode = "monorail") {
+  if (!start || !goal) return [];
+  const queue = [start];
+  const came = new Map([[key(start), null]]);
+  while (queue.length) {
+    const current = queue.shift();
+    if (current === goal) break;
+    for (const neighbor of neighbors(current)) {
+      if (neighbor.transitTrack !== mode || came.has(key(neighbor))) continue;
+      came.set(key(neighbor), current);
+      queue.push(neighbor);
+    }
+  }
+  if (!came.has(key(goal))) return [];
+  const path = [];
+  let current = goal;
+  while (current && current !== start) {
+    path.unshift(current);
+    current = came.get(key(current));
+  }
+  return path;
+}
+
+function getRailRoutePlan(mode) {
+  const orderedStops = routeStops(mode);
+  const markers = new Map();
+  if (orderedStops.length < 2) return { tiles: [], markers, connectedStopIds: [], signature: `${mode}:empty` };
+  const firstTarget = nearestTrackForTile(orderedStops[0], mode);
+  if (!firstTarget) return { tiles: [], markers, connectedStopIds: [], signature: `${mode}:disconnected` };
+  const tiles = [firstTarget];
+  const connectedStopIds = [orderedStops[0].object.stopId];
+  let current = firstTarget;
+  for (let index = 1; index < orderedStops.length; index++) {
+    const stopTile = orderedStops[index];
+    const target = nearestTrackForTile(stopTile, mode);
+    const segment = target === current ? [] : findTrackPath(current, target, mode);
+    if (!target || (target !== current && !segment.length)) continue;
+    for (const tile of segment) tiles.push(tile);
+    const markerIndex = tiles.length - 1;
+    const markerList = markers.get(markerIndex) || [];
+    markerList.push({ kind: "stop", stopId: stopTile.object.stopId });
+    markers.set(markerIndex, markerList);
+    connectedStopIds.push(stopTile.object.stopId);
+    current = target;
+  }
+  if (connectedStopIds.length < 2) return { tiles: [], markers: new Map(), connectedStopIds, signature: `${mode}:single` };
+  const returnSegment = current === firstTarget ? [] : findTrackPath(current, firstTarget, mode);
+  if (current !== firstTarget && !returnSegment.length) return { tiles: [], markers: new Map(), connectedStopIds: [], signature: `${mode}:open` };
+  for (const tile of returnSegment) tiles.push(tile);
+  const firstMarkerIndex = Math.max(0, tiles.lastIndexOf(firstTarget));
+  const firstMarkers = markers.get(firstMarkerIndex) || [];
+  firstMarkers.push({ kind: "stop", stopId: orderedStops[0].object.stopId });
+  markers.set(firstMarkerIndex, firstMarkers);
+  return {
+    tiles,
+    markers,
+    connectedStopIds,
+    signature: `${mode}:${connectedStopIds.join("|")}:${tiles.map(key).join(";")}`
+  };
+}
+
 function getTransitRoutePlan(mode = "bus") {
+  if (mode !== "bus") return getRailRoutePlan(mode);
   const tiles = [entrance];
   const markers = new Map();
   const connectedStopIds = [];
@@ -1630,6 +1928,156 @@ function rebuildRideList() {
     .filter(object => tools[object?.type]?.ride);
 }
 
+function getManagementMetrics() {
+  const revenue = state.finance.admissionRevenue + state.finance.rideRevenue + state.finance.shopRevenue;
+  const expenses = state.finance.maintenanceExpenses + state.finance.staffExpenses + state.finance.restockExpenses;
+  const busNetwork = transitNetwork("bus");
+  const monorailNetwork = transitNetwork("monorail");
+  const busRoutePlan = getTransitRoutePlan("bus");
+  const monorailRoutePlan = getTransitRoutePlan("monorail");
+  const monorailWaiting = transitStops("monorail").reduce((sum, tile) => sum + Number(tile.object.waiting || 0), 0);
+  return {
+    revenue,
+    expenses,
+    net: revenue - expenses,
+    happy: state.happy,
+    clean: state.clean,
+    rides: state.rides.length,
+    rideTypes: new Set(state.rides.map(ride => ride.type)).size,
+    scenery: sceneryScore(),
+    connectedStops: busRoutePlan.connectedStopIds.length + monorailRoutePlan.connectedStopIds.length,
+    transitRiders: Number(busNetwork.totalRiders || 0) + Number(monorailNetwork.totalRiders || 0),
+    transitWaiting: Number(busNetwork.entranceWaiting || 0)
+      + busStops().reduce((sum, tile) => sum + Number(tile.object.waiting || 0), 0) + monorailWaiting,
+    busFleet: busNetwork.fleet + monorailNetwork.fleet,
+    transitCapacity: busNetwork.fleet * TRANSIT_MODE_CONFIGS.bus.capacity
+      + monorailNetwork.fleet * TRANSIT_MODE_CONFIGS.monorail.capacity,
+    roundGuests: Math.max(0, state.guestsServed - Number(state.progression.roundStartServed || 0))
+  };
+}
+
+function calculateParkRating(metrics = getManagementMetrics()) {
+  const experience = clamp(metrics.happy * .22 + metrics.clean * .13, 0, 35);
+  const finance = clamp(metrics.net >= 0 ? 6 + metrics.net / 100 : 6 + metrics.net / 250, 0, 20);
+  const facilities = clamp(metrics.rideTypes * 3 + metrics.rides * .8 + Math.min(4, metrics.roundGuests * .25), 0, 15);
+  const scenery = clamp(metrics.scenery * .14, 0, 15);
+  const healthyTransit = metrics.transitWaiting <= metrics.transitCapacity ? 2 : 0;
+  const transit = clamp(metrics.connectedStops * 2 + metrics.busFleet + Math.min(7, metrics.transitRiders * .05) + healthyTransit, 0, 15);
+  const score = clamp(experience + finance + facilities + scenery + transit, 0, 100);
+  const stars = score >= 90 ? 5 : score >= 77 ? 4 : score >= 62 ? 3 : score >= 45 ? 2 : 1;
+  return {
+    score,
+    stars,
+    components: { experience, finance, facilities, scenery, transit }
+  };
+}
+
+function starText(stars) {
+  return `${"★".repeat(stars)}${"☆".repeat(5 - stars)}`;
+}
+
+function restoreProgressionState(savedProgression) {
+  const hasSavedProgression = !!savedProgression && typeof savedProgression === "object";
+  const completed = Array.isArray(savedProgression?.completedGoalIds)
+    ? savedProgression.completedGoalIds.filter(goalId => GOAL_DEFINITIONS[goalId])
+    : [];
+  const active = Array.isArray(savedProgression?.activeGoalIds)
+    ? savedProgression.activeGoalIds.filter(goalId => GOAL_DEFINITIONS[goalId] && !completed.includes(goalId)).slice(0, 3)
+    : ["profit", "guests", "clean"];
+  for (const goalId of GOAL_ORDER) {
+    if (active.length >= 3) break;
+    if (!completed.includes(goalId) && !active.includes(goalId)) active.push(goalId);
+  }
+  state.progression = {
+    bestStars: clamp(Math.round(Number(savedProgression?.bestStars) || 1), 1, 5),
+    unlockedTools: Array.isArray(savedProgression?.unlockedTools)
+      ? savedProgression.unlockedTools.filter(toolName => tools[toolName])
+      : [],
+    activeGoalIds: active,
+    completedGoalIds: completed,
+    roundStartServed: Math.max(0, Number(savedProgression?.roundStartServed) || 0),
+    reports: Array.isArray(savedProgression?.reports) ? savedProgression.reports.slice(0, 8) : []
+  };
+  const rating = calculateParkRating();
+  if (!hasSavedProgression) {
+    state.progression.bestStars = rating.stars;
+    state.progression.roundStartServed = state.guestsServed;
+  }
+  reconcileParkUnlocks(rating, false);
+}
+
+function reconcileParkUnlocks(rating, announce = false) {
+  const previousBest = state.progression.bestStars;
+  state.progression.bestStars = Math.max(previousBest, rating.stars);
+  const newUnlocks = [];
+  for (const [toolName, requiredStars] of Object.entries(TOOL_UNLOCK_STARS)) {
+    const alreadyBuilt = state.tiles.some(tile => tile.object?.type === toolName
+      || (tools[toolName]?.trackMode && tile.transitTrack === tools[toolName].trackMode));
+    if ((state.progression.bestStars >= requiredStars || alreadyBuilt) && !state.progression.unlockedTools.includes(toolName)) {
+      state.progression.unlockedTools.push(toolName);
+      newUnlocks.push(tools[toolName].label);
+    }
+  }
+  for (const unlock of UNLOCK_DEFINITIONS) {
+    if (unlock.stars > previousBest && unlock.stars <= state.progression.bestStars && !unlock.tool) newUnlocks.push(unlock.label);
+  }
+  updateToolLocks();
+  if (announce && newUnlocks.length) toast(`新解禁: ${newUnlocks.join("・")}`);
+  return newUnlocks;
+}
+
+function isToolUnlocked(toolName) {
+  const requiredStars = TOOL_UNLOCK_STARS[toolName] || 1;
+  return requiredStars <= 1 || state.progression.unlockedTools.includes(toolName);
+}
+
+function updateToolLocks() {
+  document.querySelectorAll("[data-tool]").forEach(button => {
+    const toolName = button.dataset.tool;
+    const requiredStars = TOOL_UNLOCK_STARS[toolName] || 1;
+    const locked = !isToolUnlocked(toolName);
+    if (!button.dataset.baseTitle) button.dataset.baseTitle = button.title || tools[toolName]?.label || "";
+    button.disabled = locked;
+    button.classList.toggle("locked", locked);
+    button.title = locked ? `評価${requiredStars}で解禁` : button.dataset.baseTitle;
+  });
+}
+
+function goalStatus(goalId, metrics = getManagementMetrics()) {
+  const goal = GOAL_DEFINITIONS[goalId];
+  const value = goal ? Number(goal.value(metrics)) || 0 : 0;
+  return {
+    goalId,
+    goal,
+    value,
+    progress: goal ? clamp(value / goal.target, 0, 1) : 0,
+    complete: !!goal && value >= goal.target
+  };
+}
+
+function renderProgressionPanel(rating, metrics) {
+  ui.ratingStars.textContent = starText(rating.stars);
+  ui.ratingStars.setAttribute("aria-label", `${rating.stars}つ星`);
+  ui.ratingScore.textContent = `${Math.round(rating.score)}点`;
+  ui.ratingExperience.textContent = Math.round(rating.components.experience);
+  ui.ratingFinance.textContent = Math.round(rating.components.finance);
+  ui.ratingFacilities.textContent = Math.round(rating.components.facilities);
+  ui.ratingScenery.textContent = Math.round(rating.components.scenery);
+  ui.ratingTransit.textContent = Math.round(rating.components.transit);
+  const goals = state.progression.activeGoalIds.map(goalId => goalStatus(goalId, metrics));
+  const goalHtml = goals.length
+    ? goals.map(status => `<div class="goal-row${status.complete ? " complete" : ""}"><span>${status.goal.label}</span><b>${status.goal.format(status.value)} / ${status.goal.format(status.goal.target)}</b><div class="goal-progress"><i style="width:${Math.round(status.progress * 100)}%"></i></div></div>`).join("")
+    : '<span class="route-empty">すべての経営目標を達成しました</span>';
+  const nextUnlock = UNLOCK_DEFINITIONS.find(unlock => unlock.stars > state.progression.bestStars);
+  const nextUnlockText = nextUnlock ? `評価${nextUnlock.stars}: ${nextUnlock.label}` : "全ランク解禁済み";
+  const signature = `${goalHtml}:${nextUnlockText}`;
+  if (signature !== progressionRenderSignature) {
+    ui.goalList.innerHTML = goalHtml;
+    ui.nextUnlock.textContent = nextUnlockText;
+    progressionRenderSignature = signature;
+  }
+}
+
 function saveGame() {
   const save = {
     version: 1,
@@ -1647,9 +2095,11 @@ function saveGame() {
     guestLog: state.guestLog,
     staff: { ...state.staff },
     transit: cloneTransitState(),
+    progression: JSON.parse(JSON.stringify(state.progression)),
     tiles: state.tiles.map(tile => ({
       terrain: tile.terrain,
       path: tile.path,
+      transitTrack: tile.transitTrack,
       litter: tile.litter,
       object: snapshotObject(tile.object)
     }))
@@ -1700,6 +2150,7 @@ function loadGame() {
     };
     state.guests = [];
     state.buses = [];
+    state.monorails = [];
     spawnTimer = 0;
     incomeTimer = 0;
     expenseTimer = 0;
@@ -1708,12 +2159,15 @@ function loadGame() {
       const tile = state.tiles[index];
       tile.terrain = savedTile.terrain === "water" ? "water" : "grass";
       tile.path = !!savedTile.path;
+      tile.transitTrack = savedTile.transitTrack === "monorail" ? "monorail" : null;
       tile.litter = Math.max(0, Number(savedTile.litter) || 0);
       tile.object = restoreObject(savedTile.object);
     });
     restoreTransitState(save.transit);
     transitRenderSignature = "";
     rebuildRideList();
+    restoreProgressionState(save.progression);
+    progressionRenderSignature = "";
     undoStack.length = 0;
     updateUndoButton();
     if (save.selectedHero) applyHeroSelection(save.selectedHero, true);
@@ -1734,11 +2188,15 @@ function computeStats() {
     ? state.rides.reduce((sum, ride) => sum + Number(ride.condition ?? 100), 0) / rides
     : 100;
   const scene = sceneryScore();
-  const transit = busStops().length;
+  const transit = busStops().length + transitStops("monorail").length;
   const transitNetworkState = transitNetwork("bus");
+  const monorailNetworkState = transitNetwork("monorail");
   const transitWaiting = transitNetworkState.entranceWaiting
-    + busStops().reduce((sum, tile) => sum + Number(tile.object.waiting || 0), 0);
-  const transitCrowdingPenalty = Math.max(0, transitWaiting - transitNetworkState.fleet * TRANSIT_MODE_CONFIGS.bus.capacity) * .08;
+    + transitStops("bus").reduce((sum, tile) => sum + Number(tile.object.waiting || 0), 0)
+    + transitStops("monorail").reduce((sum, tile) => sum + Number(tile.object.waiting || 0), 0);
+  const transitCapacity = transitNetworkState.fleet * TRANSIT_MODE_CONFIGS.bus.capacity
+    + monorailNetworkState.fleet * TRANSIT_MODE_CONFIGS.monorail.capacity;
+  const transitCrowdingPenalty = Math.max(0, transitWaiting - transitCapacity) * .08;
   const served = state.guestsServed;
   const averageGuestSatisfaction = state.guests.length
     ? state.guests.reduce((sum, guest) => sum + clamp(Number(guest.satisfaction ?? 72), 0, 100), 0) / state.guests.length
@@ -1784,6 +2242,8 @@ function computeStats() {
   ui.loadBar.style.width = `${clamp(queue * 8 + state.guests.length * 2, 5, 100)}%`;
   ui.sceneBar.style.width = `${clamp(scene * 2, 7, 100)}%`;
   renderTransitPanel();
+  const managementMetrics = getManagementMetrics();
+  renderProgressionPanel(calculateParkRating(managementMetrics), managementMetrics);
 }
 
 function renderTransitPanel() {
@@ -1838,27 +2298,57 @@ function renderTransitPanel() {
     ui.routeList.innerHTML = html;
     transitRenderSignature = signature;
   }
+  const monorailNetwork = transitNetwork("monorail");
+  const stations = transitStops("monorail");
+  const monorailPlan = getTransitRoutePlan("monorail");
+  const monorailWaiting = stations.reduce((sum, tile) => sum + Number(tile.object.waiting || 0), 0);
+  ui.monorailStatus.textContent = !isToolUnlocked("monorail_station")
+    ? "評価4で解禁"
+    : stations.length < 2
+      ? "駅を2か所建設"
+      : monorailPlan.connectedStopIds.length < 2
+        ? "レール未接続"
+        : monorailWaiting >= TRANSIT_MODE_CONFIGS.monorail.capacity * monorailNetwork.fleet
+          ? "混雑中"
+          : `${monorailNetwork.fleet}編成で運行中`;
+  ui.monorailStations.textContent = stations.length;
+  ui.monorailRiders.textContent = Math.floor(monorailNetwork.totalRiders);
 }
 
 function getPlacementStatus(tile, toolName = selectedTool) {
   if (!tile) return { valid: false, reason: "マップ外です" };
   if (toolName === "inspect") return { valid: true };
   if (toolName === "remove") {
-    const removable = !!tile.object || (tile.path && tile !== entrance) || tile.terrain !== tile.baseTerrain;
+    const removable = !!tile.object || !!tile.transitTrack || (tile.path && tile !== entrance) || tile.terrain !== tile.baseTerrain;
     return { valid: removable, reason: removable ? "" : "撤去できる物がありません" };
   }
   const tool = tools[toolName];
   if (!tool) return { valid: false, reason: "未対応のツールです" };
+  if (!isToolUnlocked(toolName)) return { valid: false, reason: `パーク評価${TOOL_UNLOCK_STARS[toolName]}で解禁されます` };
   if (state.money < tool.cost) return { valid: false, reason: "資金が足りません" };
   if (toolName === "path") {
     const valid = tile.terrain !== "water" && !tile.object && !tile.path;
     return { valid, reason: valid ? "" : "通路には空いた土地が必要です" };
+  }
+  if (toolName === "monorail_track") {
+    const valid = tile.terrain !== "water" && !tile.object && !tile.transitTrack;
+    return { valid, reason: valid ? "" : "高架レールには水辺ではない空き上空が必要です" };
   }
   if (toolName === "bus_stop") {
     const clear = !tile.object && !tile.path && tile.terrain !== "water";
     if (!clear) return { valid: false, reason: "バス停には空いた芝生が必要です" };
     const connected = !!nearestPathForTile(tile);
     return { valid: connected, reason: connected ? "" : "バス停は通路の隣に置いてください" };
+  }
+  if (toolName === "monorail_station") {
+    const clear = !tile.object && !tile.path && !tile.transitTrack && tile.terrain !== "water";
+    if (!clear) return { valid: false, reason: "駅には空いた芝生が必要です" };
+    const connectedToPath = neighbors(tile).some(neighbor => neighbor.path);
+    const connectedToRail = neighbors(tile).some(neighbor => neighbor.transitTrack === "monorail");
+    return {
+      valid: connectedToPath && connectedToRail,
+      reason: connectedToPath ? "駅は高架レールの隣に置いてください" : "駅は通路と高架レールの隣に置いてください"
+    };
   }
   if (toolName === "water") {
     const valid = !tile.object && !tile.path && tile.terrain !== "water";
@@ -1878,6 +2368,7 @@ function captureHistoryState() {
     tiles: state.tiles.map(tile => ({
       terrain: tile.terrain,
       path: tile.path,
+      transitTrack: tile.transitTrack,
       litter: tile.litter,
       object: tile.object
     })),
@@ -1889,11 +2380,12 @@ function captureHistoryState() {
       guest,
       data: { ...guest, pos: { ...guest.pos }, path: [...guest.path] }
     })),
-    transitStops: busStops().map(tile => ({
+    transitStops: [...transitStops("bus"), ...transitStops("monorail")].map(tile => ({
       stop: tile.object,
       data: { ...tile.object }
     })),
-    buses: state.buses.map(bus => ({ ...bus }))
+    buses: state.buses.map(bus => ({ ...bus })),
+    monorails: state.monorails.map(train => ({ ...train }))
   };
 }
 
@@ -1925,6 +2417,7 @@ function undoLastBuild() {
   state.rides = snapshot.rides.map(item => item.ride);
   state.guests = snapshot.guests.map(item => item.guest);
   state.buses = snapshot.buses.map(bus => ({ ...bus }));
+  state.monorails = snapshot.monorails.map(train => ({ ...train }));
   transitRenderSignature = "";
   selectedTile = snapshot.selectedTileIndex >= 0 ? state.tiles[snapshot.selectedTileIndex] : null;
   inspect(selectedTile || entrance);
@@ -1960,12 +2453,17 @@ function build(tile, options = {}) {
         state.rides = state.rides.filter(ride => ride !== removedRide);
       }
       if (tools[tile.object.type]?.transit) {
-        const network = transitNetwork(tile.object.transitMode || "bus");
+        const mode = tile.object.transitMode || "bus";
+        const network = transitNetwork(mode);
         network.routeStopIds = network.routeStopIds.filter(stopId => stopId !== tile.object.stopId);
-        state.buses = [];
+        resetTransitVehicles(mode);
       }
       tile.object = null;
       state.money += 60;
+    } else if (tile.transitTrack) {
+      const mode = tile.transitTrack;
+      tile.transitTrack = null;
+      resetTransitVehicles(mode);
     } else if (tile.path) {
       tile.path = false;
     } else {
@@ -1978,6 +2476,9 @@ function build(tile, options = {}) {
   const tool = tools[selectedTool];
   if (selectedTool === "path") {
     tile.path = true;
+  } else if (tool.trackMode) {
+    tile.transitTrack = tool.trackMode;
+    resetTransitVehicles(tool.trackMode);
   } else if (selectedTool === "water") {
     tile.terrain = "water";
   } else if (tool.ride) {
@@ -2000,10 +2501,10 @@ function build(tile, options = {}) {
       price: tool.defaultPrice
     };
   } else if (tool.transit) {
-    const mode = selectedTool === "bus_stop" ? "bus" : state.transit.activeMode;
+    const mode = tool.transitMode || (selectedTool === "bus_stop" ? "bus" : state.transit.activeMode);
     tile.object = createTransitStop(mode);
     registerTransitStop(tile.object);
-    state.buses = [];
+    resetTransitVehicles(mode);
   } else {
     tile.object = { type: selectedTool };
   }
@@ -2055,9 +2556,13 @@ function inspect(tile) {
     }
     else if (t.transit) {
       const stop = tile.object;
-      const network = transitNetwork(stop.transitMode || "bus");
+      const mode = stop.transitMode || "bus";
+      const network = transitNetwork(mode);
       const order = network.routeStopIds.indexOf(stop.stopId);
-      body = `${order >= 0 ? `停車順 ${order + 1}番。` : "現在は路線外です。"}待機 ${Math.floor(stop.waiting)}人、累計利用 ${Math.floor(stop.usage)}人、前回乗車 ${Math.floor(stop.lastBoarding)}人。`;
+      const connection = mode === "monorail"
+        ? (nearestTrackForTile(tile, mode) && nearestPathForTile(tile) ? "通路・レール接続済み。" : "接続を確認してください。")
+        : "通路接続済み。";
+      body = `${order >= 0 ? `停車順 ${order + 1}番。` : "現在は路線外です。"}${connection}待機 ${Math.floor(stop.waiting)}人、累計利用 ${Math.floor(stop.usage)}人、前回乗車 ${Math.floor(stop.lastBoarding)}人。`;
       controls = `<div class="transit-stop-controls"><button data-action="route-toggle">${order >= 0 ? "路線から外す" : "路線に追加"}</button><button data-action="route-up" title="停車順を前へ" ${order <= 0 ? "disabled" : ""}>↑</button><button data-action="route-down" title="停車順を後へ" ${order < 0 || order >= network.routeStopIds.length - 1 ? "disabled" : ""}>↓</button></div>`;
     }
     else if (t.shop) {
@@ -2129,7 +2634,7 @@ canvas.addEventListener("pointerdown", e => {
   mouse.cx = camera.x;
   mouse.cy = camera.y;
   mouse.lastTile = screenToTile(e.clientX, e.clientY);
-  mouse.mode = selectedTool === "path" ? "paint" : selectedTool === "remove" ? "range-remove" : "pan";
+  mouse.mode = selectedTool === "path" || tools[selectedTool]?.trackMode ? "paint" : selectedTool === "remove" ? "range-remove" : "pan";
   if (mouse.mode === "paint" && mouse.lastTile) {
     mouse.historyBefore = captureHistoryState();
     if (build(mouse.lastTile, { silent: true, recordHistory: false })) mouse.painted++;
@@ -2174,7 +2679,8 @@ canvas.addEventListener("pointerup", e => {
   canvas.releasePointerCapture?.(e.pointerId);
   if (mouse.mode === "paint") {
     if (mouse.painted) pushUndo(mouse.historyBefore);
-    toast(mouse.painted ? `通路を ${mouse.painted}マス建設しました` : "建設できる空き地をドラッグしてください");
+    const label = tools[selectedTool]?.trackMode ? "高架レール" : "通路";
+    toast(mouse.painted ? `${label}を ${mouse.painted}マス建設しました` : "建設できる場所をドラッグしてください");
   } else if (mouse.mode === "range-remove") {
     removeRange(mouse.rangeStart, mouse.rangeEnd || mouse.rangeStart);
   } else if (!mouse.moved) {
@@ -2226,6 +2732,10 @@ function updateToolCategoryState(activeButton = null) {
 function selectTool(tool, options = {}) {
   const btn = document.querySelector(`[data-tool="${tool}"]`);
   if (!btn || !tools[tool]) return false;
+  if (!isToolUnlocked(tool)) {
+    if (!options.silent) toast(`${tools[tool].label}はパーク評価${TOOL_UNLOCK_STARS[tool]}で解禁されます`);
+    return false;
+  }
   selectedTool = tool;
   document.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("active", b === btn));
   updateToolCategoryState(btn);
@@ -2339,12 +2849,13 @@ function toggleStopInRoute(stopOrId = selectedTile) {
   const tile = transitStopTile(stopOrId);
   if (!tile) return false;
   const stop = tile.object;
-  const network = transitNetwork(stop.transitMode || "bus");
+  const mode = stop.transitMode || "bus";
+  const network = transitNetwork(mode);
   const historyBefore = captureHistoryState();
   const index = network.routeStopIds.indexOf(stop.stopId);
   if (index >= 0) network.routeStopIds.splice(index, 1);
   else network.routeStopIds.push(stop.stopId);
-  state.buses = [];
+  resetTransitVehicles(mode);
   transitRenderSignature = "";
   pushUndo(historyBefore);
   inspect(tile);
@@ -2357,13 +2868,14 @@ function moveStopInRoute(stopOrId = selectedTile, delta = 0) {
   const tile = transitStopTile(stopOrId);
   if (!tile || !delta) return false;
   const stop = tile.object;
-  const network = transitNetwork(stop.transitMode || "bus");
+  const mode = stop.transitMode || "bus";
+  const network = transitNetwork(mode);
   const from = network.routeStopIds.indexOf(stop.stopId);
   const to = clamp(from + Math.sign(delta), 0, network.routeStopIds.length - 1);
   if (from < 0 || from === to) return false;
   const historyBefore = captureHistoryState();
   [network.routeStopIds[from], network.routeStopIds[to]] = [network.routeStopIds[to], network.routeStopIds[from]];
-  state.buses = [];
+  resetTransitVehicles(mode);
   transitRenderSignature = "";
   pushUndo(historyBefore);
   inspect(tile);
@@ -2408,29 +2920,96 @@ function adjustBusInterval(delta) {
   return true;
 }
 
+function advanceGoals(completedStatuses) {
+  const completedIds = completedStatuses.map(status => status.goalId);
+  for (const goalId of completedIds) {
+    if (!state.progression.completedGoalIds.includes(goalId)) state.progression.completedGoalIds.push(goalId);
+  }
+  state.progression.activeGoalIds = state.progression.activeGoalIds.filter(goalId => !completedIds.includes(goalId));
+  for (const goalId of GOAL_ORDER) {
+    if (state.progression.activeGoalIds.length >= 3) break;
+    if (!state.progression.completedGoalIds.includes(goalId) && !state.progression.activeGoalIds.includes(goalId)) {
+      state.progression.activeGoalIds.push(goalId);
+    }
+  }
+}
+
+function showRoundReport(report) {
+  ui.reportRound.textContent = `ROUND ${report.round}`;
+  ui.reportStars.textContent = starText(report.rating.stars);
+  ui.reportSummary.innerHTML = `
+    <span>売上<b>$${Math.round(report.revenue).toLocaleString()}</b></span>
+    <span>支出<b>$${Math.round(report.expenses).toLocaleString()}</b></span>
+    <span>収支<b class="${report.net < 0 ? "negative" : ""}">${report.net >= 0 ? "+" : "-"}$${Math.abs(Math.round(report.net)).toLocaleString()}</b></span>
+    <span>評価<b>${Math.round(report.rating.score)}点</b></span>
+    <span>目標報酬<b>$${report.goalReward.toLocaleString()}</b></span>
+    <span>評価報奨<b>$${report.ratingBonus.toLocaleString()}</b></span>`;
+  const achievements = [
+    ...report.completedGoals.map(status => `<p>目標達成: ${status.goal.label}　+$${status.goal.reward.toLocaleString()}</p>`),
+    ...report.newUnlocks.map(label => `<p>新解禁: ${label}</p>`)
+  ];
+  if (!achievements.length) achievements.push('<p class="neutral">次のラウンドも経営目標へ挑戦しましょう</p>');
+  ui.reportAchievements.innerHTML = achievements.join("");
+  pausedBeforeReport = paused;
+  paused = true;
+  ui.pauseBtn.textContent = "再開";
+  ui.roundReport.hidden = false;
+}
+
+function closeRoundReport() {
+  ui.roundReport.hidden = true;
+  paused = pausedBeforeReport;
+  ui.pauseBtn.textContent = paused ? "再開" : "停止";
+}
+
+function settleRound() {
+  const metrics = getManagementMetrics();
+  const rating = calculateParkRating(metrics);
+  const completedGoals = state.progression.activeGoalIds
+    .map(goalId => goalStatus(goalId, metrics))
+    .filter(status => status.complete);
+  const goalReward = completedGoals.reduce((sum, status) => sum + status.goal.reward, 0);
+  const newUnlocks = reconcileParkUnlocks(rating, false);
+  const baseBonus = metrics.net > 0 && state.happy >= 70
+    ? Math.min(600, Math.round(state.happy * 2 + metrics.net * .05))
+    : 0;
+  const prestigeBonus = state.progression.bestStars >= 4 ? Math.round(baseBonus * .15) : 0;
+  const worldClassBonus = state.progression.bestStars >= 5 && metrics.net > 0 ? 500 : 0;
+  const ratingBonus = baseBonus + prestigeBonus + worldClassBonus;
+  const report = {
+    round: state.round,
+    revenue: metrics.revenue,
+    expenses: metrics.expenses,
+    net: metrics.net,
+    rating,
+    completedGoals,
+    newUnlocks,
+    goalReward,
+    ratingBonus
+  };
+  state.money += goalReward + ratingBonus;
+  advanceGoals(completedGoals);
+  state.progression.reports.unshift(report);
+  state.progression.reports = state.progression.reports.slice(0, 8);
+  state.round++;
+  state.day++;
+  state.progression.roundStartServed = state.guestsServed;
+  Object.keys(state.finance).forEach(key => { state.finance[key] = 0; });
+  undoStack.length = 0;
+  updateUndoButton();
+  computeStats();
+  showRoundReport(report);
+  return report;
+}
+
 ui.pauseBtn.addEventListener("click", () => {
   paused = !paused;
   ui.pauseBtn.textContent = paused ? "再開" : "停止";
 });
 
-ui.roundBtn.addEventListener("click", () => {
-  const revenue = state.finance.admissionRevenue + state.finance.rideRevenue + state.finance.shopRevenue;
-  const expenses = state.finance.maintenanceExpenses + state.finance.staffExpenses + state.finance.restockExpenses;
-  const net = revenue - expenses;
-  const performanceBonus = net > 0 && state.happy >= 70
-    ? Math.min(600, Math.round(state.happy * 2 + net * .05))
-    : 0;
-  state.round++;
-  state.day++;
-  state.money += performanceBonus;
-  Object.keys(state.finance).forEach(key => { state.finance[key] = 0; });
-  undoStack.length = 0;
-  updateUndoButton();
-  toast(performanceBonus
-    ? `黒字評価ボーナス $${performanceBonus}。ラウンド ${state.round} を開園しました`
-    : `収支改善に挑戦。ラウンド ${state.round} を開園しました`);
-  computeStats();
-});
+ui.roundBtn.addEventListener("click", settleRound);
+ui.closeReportBtn.addEventListener("click", closeRoundReport);
+ui.continueReportBtn.addEventListener("click", closeRoundReport);
 
 ui.saveBtn.addEventListener("click", saveGame);
 ui.undoBtn.addEventListener("click", undoLastBuild);
@@ -2480,6 +3059,7 @@ function loop(now) {
   drawWorld();
   requestAnimationFrame(loop);
 }
+restoreProgressionState(null);
 renderGuestLog();
 updateUndoButton();
 computeStats();
@@ -2498,6 +3078,7 @@ window.parkDebug = {
     return { x: p.x, y: p.y + TILE_H * .5 * camera.zoom };
   },
   summary() {
+    const rating = calculateParkRating();
     return {
       money: Math.round(state.money),
       happy: Math.round(state.happy),
@@ -2523,6 +3104,16 @@ window.parkDebug = {
       transitWaiting: Math.floor(transitNetwork("bus").entranceWaiting
         + busStops().reduce((sum, tile) => sum + Number(tile.object.waiting || 0), 0)),
       transitRiders: Math.floor(transitNetwork("bus").totalRiders),
+      monorails: state.monorails.length,
+      monorailStations: transitStops("monorail").length,
+      monorailTrack: state.tiles.filter(tile => tile.transitTrack === "monorail").length,
+      monorailRiders: Math.floor(transitNetwork("monorail").totalRiders),
+      ratingScore: Math.round(rating.score),
+      ratingStars: rating.stars,
+      bestStars: state.progression.bestStars,
+      unlockedTools: [...state.progression.unlockedTools],
+      activeGoals: [...state.progression.activeGoalIds],
+      completedGoals: [...state.progression.completedGoalIds],
       paths: state.tiles.filter(t => t.path).length,
       scenery: sceneryScore()
     };
@@ -2536,6 +3127,10 @@ window.parkDebug = {
   moveStopInRoute,
   getTransitRoutePlan,
   renderTransitPanel,
+  calculateParkRating,
+  reconcileParkUnlocks,
+  settleRound,
+  closeRoundReport,
   adjustSelectedPrice,
   restockSelectedKiosk,
   inspect,

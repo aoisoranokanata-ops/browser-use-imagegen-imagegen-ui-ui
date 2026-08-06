@@ -51,6 +51,8 @@
           <button data-tool="inspect" class="active" title="調べる">見る<span>調べる</span></button>
           <button data-tool="path" title="通路を敷く">$80<span>通路</span></button>
           <button data-tool="bus_stop" title="バス停を置く">$650<span>バス停</span></button>
+          <button data-tool="monorail_track" title="高架レールを敷く">$220<span>高架レール</span></button>
+          <button data-tool="monorail_station" title="モノレール駅を置く">$2.4k<span>モノレール駅</span></button>
           <button data-tool="remove" title="撤去">撤去<span>消す</span></button>
         </div>
       </div>
@@ -94,6 +96,25 @@
         <strong>ウェルカム広場</strong>
         <p>ドラッグで移動、ホイールでズーム。タイルをクリックして建設します。ゲストはつながった通路を通ってライドへ向かいます。</p>
       </div>
+      <section class="progression-panel" aria-label="パーク評価と目標">
+        <div class="rating-heading">
+          <div>
+            <strong>パーク評価</strong>
+            <span id="ratingStars" aria-label="1つ星">★☆☆☆☆</span>
+          </div>
+          <b id="ratingScore">0点</b>
+        </div>
+        <div class="rating-breakdown" aria-label="評価内訳">
+          <span>体験<b id="ratingExperience">0</b></span>
+          <span>経営<b id="ratingFinance">0</b></span>
+          <span>施設<b id="ratingFacilities">0</b></span>
+          <span>景観<b id="ratingScenery">0</b></span>
+          <span>交通<b id="ratingTransit">0</b></span>
+        </div>
+        <div class="goal-heading"><b>経営目標</b><small>ラウンド終了時に判定</small></div>
+        <div id="goalList" class="goal-list"></div>
+        <div class="next-unlock"><span>次の解禁</span><b id="nextUnlock">評価を上げよう</b></div>
+      </section>
       <section class="guest-feedback" aria-label="ゲストの感想">
         <div class="feedback-heading">
           <strong>ゲストの声</strong>
@@ -184,6 +205,10 @@
           <div class="route-board-title"><b>停車順</b><small>バス停を選択して編集</small></div>
           <div id="routeList" class="route-list"><span class="route-empty">バス停がありません</span></div>
         </div>
+        <div class="rail-summary">
+          <div><span>モノレール</span><b id="monorailStatus">評価4で解禁</b></div>
+          <small>駅 <b id="monorailStations">0</b>　乗客 <b id="monorailRiders">0</b>人</small>
+        </div>
       </section>
       <button id="roundBtn" class="primary">次のラウンドを開園</button>
       <div class="save-row">
@@ -204,6 +229,18 @@
     </section>
 
     <section id="toast" class="toast" aria-live="polite"></section>
+    <section id="roundReport" class="round-report" hidden aria-label="ラウンド経営レポート">
+      <div class="round-report-dialog">
+        <div class="report-heading">
+          <div><small id="reportRound">ROUND 1</small><h2>経営レポート</h2></div>
+          <button id="closeReportBtn" title="レポートを閉じる" aria-label="閉じる">×</button>
+        </div>
+        <div id="reportStars" class="report-stars">★☆☆☆☆</div>
+        <div id="reportSummary" class="report-summary"></div>
+        <div id="reportAchievements" class="report-achievements"></div>
+        <button id="continueReportBtn" class="primary">パークへ戻る</button>
+      </div>
+    </section>
   </main>
   <script src="game.js"></script>
 </body>
