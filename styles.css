@@ -695,6 +695,7 @@ h1 { margin: 0; font-size: 21px; }
 .rail-summary > div b { color: var(--teal); font-size: 9px; }
 .rail-summary small { display: block; margin-top: 3px; color: var(--muted); font-size: 8px; }
 .rail-summary small b { color: var(--ink); }
+.rail-summary .train-status-row { margin-top: 7px; padding-top: 6px; border-top: 1px dashed rgba(45, 59, 70, .12); }
 
 .transit-stop-controls {
   display: grid;

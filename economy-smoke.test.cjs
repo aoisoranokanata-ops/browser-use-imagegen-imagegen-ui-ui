@@ -47,7 +47,7 @@ const element = id => {
 element("game").getContext = () => context2d;
 
 const toolNames = [
-  "inspect", "path", "remove", "bus_stop", "monorail_track", "monorail_station", "carousel", "wheel", "coaster",
+  "inspect", "path", "remove", "bus_stop", "monorail_track", "monorail_station", "train_track", "train_station", "carousel", "wheel", "coaster",
   "teacups", "kiosk", "tree", "shrub", "flower", "palm", "water", "decor"
 ];
 const toolButtons = new Map(toolNames.map(name => {
@@ -292,6 +292,7 @@ const monorailCostBefore = debug.operatingCostBreakdown().transit;
 const unlockedAtFourStars = debug.reconcileParkUnlocks({ stars: 4 }, false);
 assert.ok(unlockedAtFourStars.includes("高架レール"));
 assert.ok(unlockedAtFourStars.includes("モノレール駅"));
+assert.equal(debug.setTool("train_station"), false, "park trains should remain locked below five stars");
 for (let y = 10; y <= 17; y++) debug.buildAt(8, y, "monorail_track");
 assert.equal(state.tiles.find(tile => tile.x === 8 && tile.y === 14).path, true, "elevated rail should preserve the path below");
 assert.equal(state.tiles.find(tile => tile.x === 8 && tile.y === 14).transitTrack, "monorail");
@@ -334,6 +335,8 @@ const fiveStarReport = debug.settleRound();
 assert.equal(fiveStarReport.rating.stars, 5);
 assert.equal(fiveStarReport.goalReward, 1850);
 assert.equal(state.progression.bestStars, 5);
+assert.ok(fiveStarReport.newUnlocks.includes("園内線路"));
+assert.ok(fiveStarReport.newUnlocks.includes("園内列車駅"));
 assert.deepEqual([...state.progression.completedGoalIds].sort(), ["clean", "guests", "profit"]);
 assert.ok(state.money > goalMoneyBefore + fiveStarReport.goalReward);
 assert.equal(element("roundReport").hidden, false);
@@ -341,8 +344,31 @@ debug.closeRoundReport();
 debug.update(.1);
 assert.equal(state.monorails.length, 2, "five-star parks should run a second monorail train");
 
+state.money += 10000;
+const parkTrainCostBefore = debug.operatingCostBreakdown().transit;
+for (let x = 4; x <= 10; x++) debug.buildAt(x, 5, "path");
+for (let x = 4; x <= 10; x++) debug.buildAt(x, 7, "train_track");
+debug.buildAt(4, 6, "train_station");
+debug.buildAt(10, 6, "train_station");
+const parkTrainStations = state.tiles.filter(tile => tile.object?.type === "train_station");
+assert.equal(parkTrainStations.length, 2);
+assert.equal(debug.getTransitRoutePlan("park_train").connectedStopIds.length, 2);
+assert.ok(debug.operatingCostBreakdown().transit > parkTrainCostBefore);
+for (const stationTile of parkTrainStations) stationTile.object.waiting = 18;
+state.admissionFee = 0;
+for (let i = 0; i < 1400; i++) debug.update(.05);
+assert.equal(state.parkTrains.length, 1);
+assert.ok(state.transit.networks.park_train.totalRiders > 0);
+assert.ok(parkTrainStations.some(tile => tile.object.usage > 0));
+
+state.money = Math.max(state.money, 1000);
+debug.buildAt(11, 7, "train_track");
+assert.equal(state.tiles.find(tile => tile.x === 11 && tile.y === 7).transitTrack, "park_train");
+debug.undoLastBuild();
+assert.equal(state.tiles.find(tile => tile.x === 11 && tile.y === 7).transitTrack, null, "park train track should be undoable");
+
 const followupReport = debug.settleRound();
-assert.equal(followupReport.goalReward, 1800, "newly active achievements should pay once");
+assert.equal(followupReport.goalReward, 2600, "newly active achievements should pay once");
 assert.equal(followupReport.ratingBonus, 0);
 debug.closeRoundReport();
 
@@ -360,8 +386,10 @@ debug.loadGame();
 assert.equal(state.progression.bestStars, 5);
 assert.equal(state.tiles.filter(tile => tile.transitTrack === "monorail").length, 8);
 assert.equal(state.tiles.filter(tile => tile.object?.type === "monorail_station").length, 2);
-assert.deepEqual([...state.progression.completedGoalIds].sort(), ["clean", "guests", "profit", "ride_variety", "transit"]);
-assert.deepEqual(state.progression.activeGoalIds, ["satisfaction"]);
+assert.equal(state.tiles.filter(tile => tile.transitTrack === "park_train").length, 7);
+assert.equal(state.tiles.filter(tile => tile.object?.type === "train_station").length, 2);
+assert.deepEqual([...state.progression.completedGoalIds].sort(), ["clean", "guests", "profit", "ride_variety", "satisfaction", "transit"]);
+assert.deepEqual(state.progression.activeGoalIds, []);
 
 const modernSave = storage.get("yumeshimaParkSaveV1");
 const legacySave = JSON.parse(modernSave);
