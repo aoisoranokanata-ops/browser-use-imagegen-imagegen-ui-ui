@@ -83,6 +83,9 @@
         <button class="category-trigger" type="button" aria-expanded="false">施設・景観<span>▼</span></button>
         <div class="category-menu" role="menu">
           <button data-tool="kiosk" title="スナック売店">$900<span>売店</span></button>
+          <button data-tool="bench" title="ゲストが休憩できるベンチ">$180<span>ベンチ</span></button>
+          <button data-tool="trash_bin" title="近くのごみを受け止めるごみ箱">$120<span>ごみ箱</span></button>
+          <button data-tool="toilet" title="ゲストの衛生需要に応えるトイレ">$1.2k<span>トイレ</span></button>
           <button data-tool="water" title="水辺を作る">$160<span>水辺</span></button>
           <button data-tool="decor" title="装飾を置く">$220<span>装飾</span></button>
         </div>
@@ -175,6 +178,11 @@
         <div class="maintenance-status">
           <span>故障中 <b id="brokenCount">0</b></span>
           <span>平均状態 <b id="conditionAverage">100%</b></span>
+        </div>
+        <div class="amenity-status" aria-label="休憩・衛生施設の利用状況">
+          <span>休憩<b id="benchUses">0</b></span>
+          <span>トイレ<b id="toiletUses">0</b></span>
+          <span>ごみ回収<b id="binCollected">0</b></span>
         </div>
       </section>
       <section class="transit-panel" aria-label="公共交通管理">

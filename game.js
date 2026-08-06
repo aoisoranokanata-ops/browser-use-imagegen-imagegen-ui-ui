@@ -29,6 +29,9 @@ const ui = {
   runningCost: document.getElementById("runningCost"),
   brokenCount: document.getElementById("brokenCount"),
   conditionAverage: document.getElementById("conditionAverage"),
+  benchUses: document.getElementById("benchUses"),
+  toiletUses: document.getElementById("toiletUses"),
+  binCollected: document.getElementById("binCollected"),
   ratingStars: document.getElementById("ratingStars"),
   ratingScore: document.getElementById("ratingScore"),
   ratingExperience: document.getElementById("ratingExperience"),
@@ -148,6 +151,9 @@ const tools = {
   coaster: { cost: 4800, label: "コースター", ride: true, cap: 12, duration: 10, appeal: 36, upkeep: 45, defaultPrice: 14, color: "#f1b84f" },
   teacups: { cost: 1400, label: "ティーカップ", ride: true, cap: 6, duration: 7, appeal: 15, upkeep: 14, defaultPrice: 6, color: "#9bcf67" },
   kiosk: { cost: 900, label: "スナック売店", shop: true, defaultPrice: 8, maxStock: 30 },
+  bench: { cost: 180, label: "パークベンチ", amenity: "bench", scenery: 2, upkeep: 1 },
+  trash_bin: { cost: 120, label: "ごみ箱", amenity: "bin", scenery: 1, upkeep: 2, maxFill: 24 },
+  toilet: { cost: 1200, label: "パークトイレ", amenity: "toilet", scenery: 2, upkeep: 12 },
   tree: { cost: 120, label: "木立", scenery: 4 },
   shrub: { cost: 80, label: "低木", scenery: 3 },
   flower: { cost: 100, label: "花壇", scenery: 5 },
@@ -636,6 +642,9 @@ function drawObject(tile, p) {
   if (type === "monorail_station") drawMonorailStation(p, tile.object);
   if (type === "train_station") drawParkTrainStation(p, tile.object);
   if (type === "kiosk") drawKiosk(p, tile.object);
+  if (type === "bench") drawBench(p, tile.object);
+  if (type === "trash_bin") drawTrashBin(p, tile.object);
+  if (type === "toilet") drawToilet(p, tile.object);
   if (type === "tree") drawTree(p);
   if (type === "shrub") drawShrub(p);
   if (type === "flower") drawFlowerBed(p);
@@ -909,6 +918,72 @@ function drawKiosk(p, kiosk = {}) {
   if (Number(kiosk.stock ?? tools.kiosk.maxStock) <= 0) {
     drawRideStatusBadge("売切", -17 * z, -49 * z, "#d84f4f");
   }
+  ctx.restore();
+}
+
+function drawBench(p) {
+  const z = camera.zoom;
+  ctx.save();
+  ctx.translate(p.x, p.y + 22 * z);
+  drawSoftShadow(0, 1 * z, 24 * z, 7 * z, .15);
+  ctx.strokeStyle = "#26313f";
+  ctx.lineWidth = 3 * z;
+  ctx.beginPath();
+  ctx.moveTo(-18 * z, -5 * z);
+  ctx.lineTo(-16 * z, 5 * z);
+  ctx.moveTo(18 * z, -5 * z);
+  ctx.lineTo(16 * z, 5 * z);
+  ctx.stroke();
+  ctx.fillStyle = "#8b6a42";
+  roundRect(-25 * z, -10 * z, 50 * z, 8 * z, 2 * z);
+  ctx.fill();
+  ctx.fillStyle = "#49abc2";
+  roundRect(-24 * z, -23 * z, 48 * z, 9 * z, 3 * z);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(38,49,63,.28)";
+  ctx.lineWidth = 1.5 * z;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawTrashBin(p, bin = {}) {
+  const z = camera.zoom;
+  ctx.save();
+  ctx.translate(p.x, p.y + 22 * z);
+  drawSoftShadow(0, 1 * z, 13 * z, 5 * z, .15);
+  ctx.fillStyle = "#3f8750";
+  roundRect(-10 * z, -24 * z, 20 * z, 26 * z, 4 * z);
+  ctx.fill();
+  ctx.fillStyle = "#f1b84f";
+  roundRect(-12 * z, -27 * z, 24 * z, 6 * z, 3 * z);
+  ctx.fill();
+  ctx.fillStyle = "#fff7df";
+  ctx.beginPath();
+  ctx.arc(0, -13 * z, 4 * z, 0, Math.PI * 2);
+  ctx.fill();
+  const fill = Number(bin.fill || 0);
+  const maxFill = Number(bin.maxFill || tools.trash_bin.maxFill);
+  if (fill >= maxFill * .8) drawRideStatusBadge("満杯", -17 * z, -50 * z, "#d84f4f");
+  ctx.restore();
+}
+
+function drawToilet(p) {
+  const z = camera.zoom;
+  ctx.save();
+  ctx.translate(p.x, p.y + 18 * z);
+  drawSoftShadow(0, 8 * z, 31 * z, 10 * z, .16);
+  drawHouse(0, 0, "#fff7df", "#49abc2");
+  ctx.fillStyle = "#ef6f61";
+  roundRect(-17 * z, -12 * z, 34 * z, 14 * z, 3 * z);
+  ctx.fill();
+  ctx.fillStyle = "#fff7df";
+  ctx.font = `bold ${10 * z}px sans-serif`;
+  ctx.textAlign = "center";
+  ctx.fillText("WC", 0, -2 * z);
+  ctx.fillStyle = "#26313f";
+  ctx.fillRect(-18 * z, 2 * z, 13 * z, 8 * z);
+  ctx.fillRect(5 * z, 2 * z, 13 * z, 8 * z);
+  drawFlag(24 * z, -14 * z, "#f1b84f", 1);
   ctx.restore();
 }
 
@@ -1341,8 +1416,9 @@ function update(dt) {
   for (const guest of state.guests) updateGuest(guest, dt);
   if (incomeTimer > 3.2) {
     incomeTimer = 0;
+    const looseLitter = state.tiles.reduce((sum, tile) => sum + Number(tile.litter || 0), 0);
     state.clean = clamp(
-      state.clean - state.guests.length * .075 + sceneryScore() * .002 + state.staff.cleaners * .65,
+      state.clean - state.guests.length * .075 - looseLitter * .04 + sceneryScore() * .002 + state.staff.cleaners * .65,
       20,
       100
     );
@@ -1352,6 +1428,13 @@ function update(dt) {
       const removed = Math.min(tile.litter, cleaningPower);
       tile.litter -= removed;
       cleaningPower -= removed;
+    }
+    for (const tile of state.tiles) {
+      if (cleaningPower <= 0) break;
+      if (tools[tile.object?.type]?.amenity !== "bin") continue;
+      const removed = Math.min(Number(tile.object.fill || 0), cleaningPower * 2);
+      tile.object.fill -= removed;
+      cleaningPower -= removed / 2;
     }
   }
   if (expenseTimer > 8) {
@@ -1367,7 +1450,12 @@ function update(dt) {
 }
 
 function operatingCostBreakdown() {
-  const maintenance = state.rides.reduce((sum, ride) => sum + (tools[ride.type].upkeep || 0), 0);
+  const rideMaintenance = state.rides.reduce((sum, ride) => sum + (tools[ride.type].upkeep || 0), 0);
+  const amenityMaintenance = state.tiles.reduce((sum, tile) => {
+    const tool = tools[tile.object?.type];
+    return sum + (tool?.amenity ? Number(tool.upkeep || 0) : 0);
+  }, 0);
+  const maintenance = rideMaintenance + amenityMaintenance;
   const staff = state.staff.cleaners * 35 + state.staff.mechanics * 45;
   const busNetwork = transitNetwork("bus");
   const busConfig = TRANSIT_MODE_CONFIGS.bus;
@@ -1581,7 +1669,8 @@ function spawnGuestAt(startTile) {
     budget: (archetype === "family" ? 48 : 28) + Math.random() * 54,
     priceSensitivity: .65 + Math.random() * .8,
     hunger: (archetype === "foodie" ? 52 : 24) + Math.random() * 18,
-    fatigue: Math.random() * 18,
+    fatigue: (archetype === "family" ? 24 : 12) + Math.random() * 36,
+    restroomNeed: (archetype === "family" ? 32 : 20) + Math.random() * 40,
     satisfaction: 72,
     thought: null,
     thoughtTimer: 0,
@@ -1643,6 +1732,69 @@ function chooseShop(guest) {
   return choices[0] || null;
 }
 
+function chooseAmenity(guest, amenityType) {
+  const choices = state.tiles
+    .filter(tile => tools[tile.object?.type]?.amenity === amenityType)
+    .map(tile => ({ tile, pathTile: nearestPathForTile(tile) }))
+    .filter(choice => choice.pathTile && (choice.pathTile === guest.tile || findPath(guest.tile, choice.pathTile).length));
+  choices.sort((a, b) => {
+    const distanceA = Math.abs(a.tile.x - guest.tile.x) + Math.abs(a.tile.y - guest.tile.y);
+    const distanceB = Math.abs(b.tile.x - guest.tile.x) + Math.abs(b.tile.y - guest.tile.y);
+    return distanceA - distanceB;
+  });
+  return choices[0] || null;
+}
+
+function routeGuestToAmenity(guest, amenityType, thought) {
+  const choice = chooseAmenity(guest, amenityType);
+  if (!choice) return false;
+  guest.goal = choice.tile.object;
+  guest.goalType = amenityType;
+  guest.path = findPath(guest.tile, choice.pathTile);
+  guestThought(guest, thought.message, thought.short, "neutral");
+  return true;
+}
+
+function beginAmenityUse(guest) {
+  if (!guest.goal || !["bench", "toilet"].includes(guest.goalType)) return false;
+  guest.goal.usage = Number(guest.goal.usage || 0) + 1;
+  guest.state = guest.goalType === "bench" ? "resting" : "restroom";
+  guest.amenityTimer = guest.goalType === "bench" ? 4 : 3;
+  guestThought(
+    guest,
+    guest.goalType === "bench" ? "ベンチでひと休みできて助かった" : "トイレが近くにあって安心した",
+    guest.goalType === "bench" ? "ひと休み" : "すっきり",
+    "positive",
+    true
+  );
+  return true;
+}
+
+function dropLitter(tile, amount) {
+  if (!tile || amount <= 0) return false;
+  const bins = state.tiles
+    .filter(candidate => tools[candidate.object?.type]?.amenity === "bin")
+    .map(candidate => ({
+      tile: candidate,
+      distance: Math.abs(candidate.x - tile.x) + Math.abs(candidate.y - tile.y)
+    }))
+    .filter(candidate => candidate.distance <= 3 && Number(candidate.tile.object.fill || 0) < Number(candidate.tile.object.maxFill || tools.trash_bin.maxFill))
+    .sort((a, b) => a.distance - b.distance);
+  const bin = bins[0]?.tile.object;
+  if (bin) {
+    const available = Number(bin.maxFill || tools.trash_bin.maxFill) - Number(bin.fill || 0);
+    const collected = Math.min(amount, available);
+    bin.fill = Number(bin.fill || 0) + collected;
+    bin.collected = Number(bin.collected || 0) + collected;
+    bin.usage = Number(bin.usage || 0) + 1;
+    if (collected >= amount) return true;
+    tile.litter += amount - collected;
+    return false;
+  }
+  tile.litter += amount;
+  return false;
+}
+
 function nearestPath(ride) {
   const tile = state.tiles.find(t => t.object === ride);
   const n = neighbors(tile).find(t => t.path);
@@ -1655,6 +1807,21 @@ function updateGuest(g, dt) {
   g.thoughtCooldown = Math.max(0, Number(g.thoughtCooldown || 0) - dt);
   g.hunger = clamp(Number(g.hunger || 0) + dt * profile.hungerRate, 0, 100);
   g.fatigue = clamp(Number(g.fatigue || 0) + dt * profile.fatigueRate * (g.state === "queued" ? 1.35 : 1), 0, 100);
+  g.restroomNeed = clamp(Number(g.restroomNeed || 0) + dt * (g.archetype === "family" ? .8 : .65), 0, 100);
+
+  if (g.state === "resting" || g.state === "restroom") {
+    g.amenityTimer = Math.max(0, Number(g.amenityTimer || 0) - dt);
+    if (g.state === "resting") g.fatigue = Math.max(5, g.fatigue - dt * 18);
+    else g.restroomNeed = Math.max(0, g.restroomNeed - dt * 34);
+    if (g.amenityTimer <= 0) {
+      if (g.state === "resting") g.satisfaction = clamp(g.satisfaction + 5, 0, 100);
+      else g.satisfaction = clamp(g.satisfaction + 4, 0, 100);
+      g.goal = null;
+      g.goalType = null;
+      routeGuestToRideOrExit(g);
+    }
+    return;
+  }
 
   if (g.state === "queued" || g.state === "riding") {
     g.patience -= dt;
@@ -1670,7 +1837,18 @@ function updateGuest(g, dt) {
     return;
   }
 
-  if (g.fatigue >= 94 && g.state !== "leaving") {
+  if (g.state === "walking" && g.goalType !== "toilet" && g.restroomNeed >= 70) {
+    const routed = routeGuestToAmenity(g, "toilet", { message: "そろそろトイレを探そう", short: "トイレへ" });
+    if (!routed && g.restroomNeed >= 86) {
+      if (guestThought(g, "近くにトイレが見つからない", "トイレがない", "negative")) g.satisfaction -= 6;
+    }
+  }
+
+  if (g.state === "walking" && !["toilet", "bench"].includes(g.goalType) && g.fatigue >= 72) {
+    routeGuestToAmenity(g, "bench", { message: "少しベンチで休憩しよう", short: "休憩しよう" });
+  }
+
+  if (g.fatigue >= 94 && g.state !== "leaving" && g.goalType !== "bench") {
     g.state = "leaving";
     g.goal = null;
     g.goalType = null;
@@ -1679,7 +1857,7 @@ function updateGuest(g, dt) {
     guestThought(g, "疲れたので休める場所がほしい", "休憩したい", "negative", true);
   }
 
-  if (g.state === "walking" && g.goalType !== "shop" && !g.spent && g.hunger >= 66) {
+  if (g.state === "walking" && !["shop", "bench", "toilet"].includes(g.goalType) && !g.spent && g.hunger >= 66) {
     const choice = chooseShop(g);
     if (choice) {
       g.goal = choice.tile.object;
@@ -1697,6 +1875,8 @@ function updateGuest(g, dt) {
     if (g.goalType === "shop" && g.goal) {
       buyFromShop(g, g.goal);
       routeGuestToRideOrExit(g);
+    } else if (["bench", "toilet"].includes(g.goalType) && g.goal) {
+      beginAmenityUse(g);
     } else if (g.goal) {
       if (g.goal.broken) {
         guestThought(g, "目当てのライドが故障している", "故障している", "negative", true);
@@ -1705,7 +1885,7 @@ function updateGuest(g, dt) {
       }
       g.goal.queue.push(g);
       g.state = "queued";
-      g.tile.litter += Math.random() * .4;
+      dropLitter(g.tile, Math.random() * .4);
     } else {
       g.path = findPath(g.tile, entrance);
       g.state = "leaving";
@@ -1825,7 +2005,7 @@ function updateRide(ride, dt) {
       guest.goal = null;
       guest.goalType = null;
       guest.patience = 30;
-      guest.tile.litter += Math.random() * .55;
+      dropLitter(guest.tile, Math.random() * .55);
       state.guestsServed++;
       const fairPrice = tools[ride.type].defaultPrice;
       const value = clamp(1.5 - Math.max(0, ride.price - fairPrice) * .16, -.8, 1.5);
@@ -1849,7 +2029,13 @@ function updateRide(ride, dt) {
           guest.path = findPath(guest.tile, shopChoice.pathTile);
         }
       }
-      if (!guest.path.length) {
+      if (!guest.goal && guest.restroomNeed >= 70) {
+        routeGuestToAmenity(guest, "toilet", { message: "ライドの後にトイレへ寄ろう", short: "トイレへ" });
+      }
+      if (!guest.goal && guest.fatigue >= 72) {
+        routeGuestToAmenity(guest, "bench", { message: "遊んだ後はベンチでひと休み", short: "休憩しよう" });
+      }
+      if (!guest.path.length && !guest.goal) {
         guest.state = "leaving";
         guest.path = findPath(guest.tile, entrance);
       }
@@ -2064,6 +2250,11 @@ function snapshotObject(object) {
     saved.stock = Number(object.stock ?? tools.kiosk.maxStock);
     saved.maxStock = Number(object.maxStock ?? tools.kiosk.maxStock);
     saved.price = Number(object.price ?? tools.kiosk.defaultPrice);
+  } else if (tools[object.type]?.amenity) {
+    saved.usage = Number(object.usage || 0);
+    saved.fill = Number(object.fill || 0);
+    saved.collected = Number(object.collected || 0);
+    saved.maxFill = Number(object.maxFill || tools[object.type].maxFill || 0);
   }
   return saved;
 }
@@ -2090,6 +2281,16 @@ function restoreObject(saved) {
       stock: clamp(Number(saved.stock ?? maxStock), 0, maxStock),
       maxStock,
       price: clamp(Number(saved.price ?? tools.kiosk.defaultPrice), 1, 20)
+    };
+  }
+  if (tools[saved.type].amenity) {
+    const maxFill = Number(saved.maxFill || tools[saved.type].maxFill || 0);
+    return {
+      type: saved.type,
+      usage: Math.max(0, Number(saved.usage || 0)),
+      fill: clamp(Number(saved.fill || 0), 0, maxFill || 0),
+      collected: Math.max(0, Number(saved.collected || 0)),
+      ...(maxFill ? { maxFill } : {})
     };
   }
   return { type: saved.type };
@@ -2120,6 +2321,7 @@ function getManagementMetrics() {
     clean: state.clean,
     rides: state.rides.length,
     rideTypes: new Set(state.rides.map(ride => ride.type)).size,
+    amenities: state.tiles.filter(tile => tools[tile.object?.type]?.amenity).length,
     scenery: sceneryScore(),
     connectedStops: busRoutePlan.connectedStopIds.length + monorailRoutePlan.connectedStopIds.length + parkTrainRoutePlan.connectedStopIds.length,
     transitRiders: Number(busNetwork.totalRiders || 0) + Number(monorailNetwork.totalRiders || 0) + Number(parkTrainNetwork.totalRiders || 0),
@@ -2136,7 +2338,7 @@ function getManagementMetrics() {
 function calculateParkRating(metrics = getManagementMetrics()) {
   const experience = clamp(metrics.happy * .22 + metrics.clean * .13, 0, 35);
   const finance = clamp(metrics.net >= 0 ? 6 + metrics.net / 100 : 6 + metrics.net / 250, 0, 20);
-  const facilities = clamp(metrics.rideTypes * 3 + metrics.rides * .8 + Math.min(4, metrics.roundGuests * .25), 0, 15);
+  const facilities = clamp(metrics.rideTypes * 3 + metrics.rides * .8 + Math.min(3, metrics.amenities * .5) + Math.min(4, metrics.roundGuests * .25), 0, 15);
   const scenery = clamp(metrics.scenery * .14, 0, 15);
   const healthyTransit = metrics.transitWaiting <= metrics.transitCapacity ? 2 : 0;
   const transit = clamp(metrics.connectedStops * 2 + metrics.busFleet + Math.min(7, metrics.transitRiders * .05) + healthyTransit, 0, 15);
@@ -2398,7 +2600,10 @@ function computeStats() {
   ui.guests.textContent = state.guests.length;
   const hungryGuests = state.guests.filter(guest => guest.hunger >= 66).length;
   const tiredGuests = state.guests.filter(guest => guest.fatigue >= 72).length;
-  ui.guestMoodSummary.textContent = hungryGuests
+  const restroomGuests = state.guests.filter(guest => Number(guest.restroomNeed || 0) >= 70).length;
+  ui.guestMoodSummary.textContent = restroomGuests
+    ? `トイレ待ち ${restroomGuests}人`
+    : hungryGuests
     ? `空腹 ${hungryGuests}人`
     : tiredGuests
       ? `疲労 ${tiredGuests}人`
@@ -2419,6 +2624,10 @@ function computeStats() {
   ui.netTotal.classList.toggle("negative", net < 0);
   ui.brokenCount.textContent = broken;
   ui.conditionAverage.textContent = `${Math.round(averageCondition)}%`;
+  const amenities = state.tiles.map(tile => tile.object).filter(object => tools[object?.type]?.amenity);
+  ui.benchUses.textContent = Math.floor(amenities.filter(object => object.type === "bench").reduce((sum, object) => sum + Number(object.usage || 0), 0));
+  ui.toiletUses.textContent = Math.floor(amenities.filter(object => object.type === "toilet").reduce((sum, object) => sum + Number(object.usage || 0), 0));
+  ui.binCollected.textContent = Math.floor(amenities.filter(object => object.type === "trash_bin").reduce((sum, object) => sum + Number(object.collected || 0), 0));
   ui.growthBar.style.width = `${clamp((rides * 16 + transit * 7 + served * .22), 4, 100)}%`;
   ui.loadBar.style.width = `${clamp(queue * 8 + state.guests.length * 2, 5, 100)}%`;
   ui.sceneBar.style.width = `${clamp(scene * 2, 7, 100)}%`;
@@ -2564,6 +2773,12 @@ function getPlacementStatus(tile, toolName = selectedTool) {
     const valid = !tile.object && !tile.path && tile.terrain !== "water";
     return { valid, reason: valid ? "" : "水辺には空いた土地が必要です" };
   }
+  if (tool.amenity) {
+    const clear = !tile.object && !tile.path && tile.terrain !== "water";
+    if (!clear) return { valid: false, reason: "施設には空いた芝生が必要です" };
+    const connected = !!nearestPathForTile(tile);
+    return { valid: connected, reason: connected ? "" : "施設は通路の隣に置いてください" };
+  }
   const valid = !tile.object && !tile.path && tile.terrain !== "water";
   return { valid, reason: valid ? "" : "空いた芝生に配置してください" };
 }
@@ -2594,6 +2809,10 @@ function captureHistoryState() {
       stop: tile.object,
       data: { ...tile.object }
     })),
+    amenities: state.tiles
+      .map(tile => tile.object)
+      .filter(object => tools[object?.type]?.amenity)
+      .map(amenity => ({ amenity, data: { ...amenity } })),
     buses: state.buses.map(bus => ({ ...bus })),
     monorails: state.monorails.map(train => ({ ...train })),
     parkTrains: state.parkTrains.map(train => ({ ...train }))
@@ -2624,6 +2843,7 @@ function undoLastBuild() {
   snapshot.rides.forEach(({ ride, data }) => Object.assign(ride, data, { queue: [...data.queue], riders: [...data.riders] }));
   snapshot.guests.forEach(({ guest, data }) => Object.assign(guest, data, { pos: { ...data.pos }, path: [...data.path] }));
   snapshot.transitStops.forEach(({ stop, data }) => Object.assign(stop, data));
+  snapshot.amenities.forEach(({ amenity, data }) => Object.assign(amenity, data));
   snapshot.tiles.forEach((saved, index) => Object.assign(state.tiles[index], saved));
   state.rides = snapshot.rides.map(item => item.ride);
   state.guests = snapshot.guests.map(item => item.guest);
@@ -2663,6 +2883,15 @@ function build(tile, options = {}) {
           guest.path = findPath(guest.tile, entrance);
         }
         state.rides = state.rides.filter(ride => ride !== removedRide);
+      }
+      if (tools[tile.object.type]?.amenity) {
+        const removedAmenity = tile.object;
+        for (const guest of state.guests.filter(candidate => candidate.goal === removedAmenity)) {
+          guest.goal = null;
+          guest.goalType = null;
+          guest.amenityTimer = 0;
+          routeGuestToRideOrExit(guest);
+        }
       }
       if (tools[tile.object.type]?.transit) {
         const mode = tile.object.transitMode || "bus";
@@ -2711,6 +2940,14 @@ function build(tile, options = {}) {
       stock: tool.maxStock,
       maxStock: tool.maxStock,
       price: tool.defaultPrice
+    };
+  } else if (tool.amenity) {
+    tile.object = {
+      type: selectedTool,
+      usage: 0,
+      fill: 0,
+      collected: 0,
+      ...(tool.maxFill ? { maxFill: tool.maxFill } : {})
     };
   } else if (tool.transit) {
     const mode = tool.transitMode || (selectedTool === "bus_stop" ? "bus" : state.transit.activeMode);
@@ -2783,6 +3020,17 @@ function inspect(tile) {
       const restockCost = (maxStock - stock) * 3;
       body = `在庫 ${stock}/${maxStock}。近くを通ったゲストが在庫から商品を購入します。`;
       controls = `<div class="inline-economy"><span>商品価格</span><div class="stepper"><button data-action="shop-price-down" title="商品価格を下げる">−</button><b>$${tile.object.price}</b><button data-action="shop-price-up" title="商品価格を上げる">＋</button></div><button class="restock-btn" data-action="restock" ${restockCost <= 0 ? "disabled" : ""}>補充 $${restockCost}</button></div>`;
+    }
+    else if (t.amenity === "bench") {
+      body = `累計 ${Math.floor(tile.object.usage || 0)}回利用。疲れたゲストが通路から立ち寄り、休憩して元気を取り戻します。`;
+    }
+    else if (t.amenity === "toilet") {
+      body = `累計 ${Math.floor(tile.object.usage || 0)}回利用。衛生需要が高まったゲストの不満を解消します。維持費は精算ごとに $${t.upkeep} です。`;
+    }
+    else if (t.amenity === "bin") {
+      const fill = Number(tile.object.fill || 0);
+      const maxFill = Number(tile.object.maxFill || tools.trash_bin.maxFill);
+      body = `容量 ${Math.round(fill)}/${maxFill}、累計回収 ${Math.floor(tile.object.collected || 0)}。3マス以内で発生したごみを受け止め、清掃員が空にします。`;
     }
     else body = `景観値 ${t.scenery}。満足度を少し上げ、清潔さの悪化をやわらげます。`;
   }
@@ -3331,7 +3579,10 @@ window.parkDebug = {
       activeGoals: [...state.progression.activeGoalIds],
       completedGoals: [...state.progression.completedGoalIds],
       paths: state.tiles.filter(t => t.path).length,
-      scenery: sceneryScore()
+      scenery: sceneryScore(),
+      benchUses: Math.floor(state.tiles.filter(tile => tile.object?.type === "bench").reduce((sum, tile) => sum + Number(tile.object.usage || 0), 0)),
+      toiletUses: Math.floor(state.tiles.filter(tile => tile.object?.type === "toilet").reduce((sum, tile) => sum + Number(tile.object.usage || 0), 0)),
+      binCollected: Math.floor(state.tiles.filter(tile => tile.object?.type === "trash_bin").reduce((sum, tile) => sum + Number(tile.object.collected || 0), 0))
     };
   },
   saveGame,
@@ -3356,6 +3607,8 @@ window.parkDebug = {
   removeRange,
   spawnGuestAt,
   chooseRide,
+  chooseAmenity,
+  dropLitter,
   addGuestLog,
   getPlacementStatus,
   undoDepth() { return undoStack.length; }

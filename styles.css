@@ -561,7 +561,8 @@ h1 { margin: 0; font-size: 21px; }
 
 .staff-heading,
 .staff-row,
-.maintenance-status {
+.maintenance-status,
+.amenity-status {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -605,6 +606,30 @@ h1 { margin: 0; font-size: 21px; }
 }
 
 .maintenance-status b { color: var(--ink); }
+
+.amenity-status {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.amenity-status span {
+  padding: 6px 4px;
+  background: rgba(73, 171, 194, .08);
+  border: 1px solid rgba(73, 171, 194, .16);
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 9px;
+  text-align: center;
+}
+
+.amenity-status b {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink);
+  font-size: 11px;
+}
 
 .transit-panel {
   margin: 12px 0;

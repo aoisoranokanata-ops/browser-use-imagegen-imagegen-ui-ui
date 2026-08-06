@@ -48,7 +48,7 @@ element("game").getContext = () => context2d;
 
 const toolNames = [
   "inspect", "path", "remove", "bus_stop", "monorail_track", "monorail_station", "train_track", "train_station", "carousel", "wheel", "coaster",
-  "teacups", "kiosk", "tree", "shrub", "flower", "palm", "water", "decor"
+  "teacups", "kiosk", "bench", "trash_bin", "toilet", "tree", "shrub", "flower", "palm", "water", "decor"
 ];
 const toolButtons = new Map(toolNames.map(name => {
   const button = new MockElement();
@@ -219,6 +219,71 @@ debug.update(.1);
 assert.equal(familyGuest.spent, true);
 assert.equal(hungryShopTile.object.stock, stockBeforeMeal - 1);
 assert.ok(state.guestLog.length > 0);
+
+state.money = 50000;
+const amenityCostBefore = debug.operatingCostBreakdown().maintenance;
+debug.buildAt(7, 15, "bench");
+debug.buildAt(7, 11, "trash_bin");
+debug.buildAt(9, 15, "toilet");
+const benchTile = state.tiles.find(tile => tile.x === 7 && tile.y === 15);
+const binTile = state.tiles.find(tile => tile.x === 7 && tile.y === 11);
+const toiletTile = state.tiles.find(tile => tile.x === 9 && tile.y === 15);
+assert.equal(debug.operatingCostBreakdown().maintenance, amenityCostBefore + 15);
+
+familyGuest.state = "walking";
+familyGuest.goalType = "ride";
+familyGuest.fatigue = 76;
+familyGuest.restroomNeed = 0;
+familyGuest.path = [];
+familyGuest.thoughtCooldown = 0;
+debug.update(.1);
+assert.equal(familyGuest.goalType, "bench");
+const benchPathTile = familyGuest.path[familyGuest.path.length - 1] || familyGuest.tile;
+familyGuest.tile = benchPathTile;
+familyGuest.pos = { x: benchPathTile.x, y: benchPathTile.y };
+familyGuest.path = [];
+debug.update(.1);
+assert.equal(familyGuest.state, "resting");
+for (let i = 0; i < 45; i++) debug.update(.1);
+assert.ok(familyGuest.fatigue < 20, "a bench should restore a tired guest");
+assert.equal(benchTile.object.usage, 1);
+
+familyGuest.state = "walking";
+familyGuest.goalType = "ride";
+familyGuest.goal = state.rides[0];
+familyGuest.restroomNeed = 76;
+familyGuest.fatigue = 10;
+familyGuest.path = [];
+familyGuest.thoughtCooldown = 0;
+debug.update(.1);
+assert.equal(familyGuest.goalType, "toilet");
+const toiletPathTile = familyGuest.path[familyGuest.path.length - 1] || familyGuest.tile;
+familyGuest.tile = toiletPathTile;
+familyGuest.pos = { x: toiletPathTile.x, y: toiletPathTile.y };
+familyGuest.path = [];
+debug.update(.1);
+assert.equal(familyGuest.state, "restroom");
+for (let i = 0; i < 35; i++) debug.update(.1);
+assert.ok(familyGuest.restroomNeed < 5, "a toilet should resolve restroom demand");
+assert.equal(toiletTile.object.usage, 1);
+
+const nearBinPath = state.tiles.find(tile => tile.x === 8 && tile.y === 11);
+const litterBefore = nearBinPath.litter;
+assert.equal(debug.dropLitter(nearBinPath, 3), true);
+assert.equal(nearBinPath.litter, litterBefore);
+assert.equal(binTile.object.fill, 3);
+assert.equal(binTile.object.collected, 3);
+debug.update(3.3);
+assert.ok(binTile.object.fill < 3, "cleaners should empty trash bins");
+
+debug.saveGame();
+benchTile.object.usage = 99;
+toiletTile.object.usage = 99;
+binTile.object.collected = 99;
+debug.loadGame();
+assert.equal(state.tiles.find(tile => tile.x === 7 && tile.y === 15).object.usage, 1);
+assert.equal(state.tiles.find(tile => tile.x === 9 && tile.y === 15).object.usage, 1);
+assert.equal(state.tiles.find(tile => tile.x === 7 && tile.y === 11).object.collected, 3);
 
 state.money = 50000;
 const transitCostBefore = debug.operatingCostBreakdown().transit;
