@@ -19,7 +19,7 @@
         </div>
       </div>
       <div class="meters">
-        <span><b id="money">$18,000</b><small>資金</small></span>
+        <span><b id="money">$30,000</b><small>資金</small></span>
         <span><b id="happy">82%</b><small>満足度</small></span>
         <span><b id="clean">91%</b><small>清潔さ</small></span>
         <span><b id="queue">0</b><small>待ち列</small></span>
@@ -153,6 +153,15 @@
           <span>売店<b id="shopRevenue">$0</b></span>
           <span>維持費・人件費<b id="expenseTotal">$0</b></span>
         </div>
+        <div class="shop-stock-summary">
+          <span>売店在庫 <b id="shopStockTotal">0 / 0</b></span>
+          <span id="shopDeliveryStatus">配送待ちなし</span>
+        </div>
+        <div class="difficulty-status">
+          <span id="difficultyLabel">はじめて</span>
+          <b id="subsidyStatus">序盤補助 50%</b>
+        </div>
+        <p id="financeHint" class="finance-hint">まずは既存設備のままゲストの動きを観察しましょう。</p>
       </section>
       <section class="staff-panel" aria-label="スタッフ管理">
         <div class="staff-heading">
@@ -232,6 +241,7 @@
         <button id="saveBtn" title="現在のパークを保存">セーブ</button>
         <button id="undoBtn" aria-label="元に戻す" title="最後の建設操作を元に戻す">↶</button>
         <button id="loadBtn" title="保存したパークを読み込む">ロード</button>
+        <button id="tutorialBtn" aria-label="チュートリアル" title="初心者チュートリアルを開く">?</button>
       </div>
       <details>
         <summary>アート方針</summary>
@@ -246,6 +256,26 @@
     </section>
 
     <section id="toast" class="toast" aria-live="polite"></section>
+    <section id="tutorialOverlay" class="tutorial-overlay" hidden aria-label="初心者チュートリアル">
+      <div class="tutorial-dialog">
+        <div class="tutorial-heading">
+          <div><small id="tutorialStepLabel">STEP 1 / 4</small><h2 id="tutorialTitle">ようこそ、園長さん</h2></div>
+          <button id="tutorialCloseBtn" title="チュートリアルを閉じる" aria-label="閉じる">×</button>
+        </div>
+        <div class="tutorial-progress" aria-hidden="true"><i id="tutorialProgress"></i></div>
+        <div id="tutorialBody" class="tutorial-body"></div>
+        <div id="difficultyPicker" class="difficulty-picker" aria-label="難易度選択">
+          <button data-difficulty="beginner" class="active"><b>はじめて</b><small>$30,000・序盤補助</small></button>
+          <button data-difficulty="standard"><b>標準</b><small>$24,000・軽い補助</small></button>
+          <button data-difficulty="challenge"><b>挑戦</b><small>$18,000・補助なし</small></button>
+        </div>
+        <div class="tutorial-actions">
+          <button id="tutorialBackBtn">戻る</button>
+          <button id="tutorialSkipBtn">あとで見る</button>
+          <button id="tutorialNextBtn" class="primary">次へ</button>
+        </div>
+      </div>
+    </section>
     <section id="roundReport" class="round-report" hidden aria-label="ラウンド経営レポート">
       <div class="round-report-dialog">
         <div class="report-heading">

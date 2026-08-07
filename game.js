@@ -74,8 +74,24 @@ const ui = {
   admissionRevenue: document.getElementById("admissionRevenue"),
   rideRevenue: document.getElementById("rideRevenue"),
   shopRevenue: document.getElementById("shopRevenue"),
+  shopStockTotal: document.getElementById("shopStockTotal"),
+  shopDeliveryStatus: document.getElementById("shopDeliveryStatus"),
   expenseTotal: document.getElementById("expenseTotal"),
   netTotal: document.getElementById("netTotal"),
+  difficultyLabel: document.getElementById("difficultyLabel"),
+  subsidyStatus: document.getElementById("subsidyStatus"),
+  financeHint: document.getElementById("financeHint"),
+  tutorialBtn: document.getElementById("tutorialBtn"),
+  tutorialOverlay: document.getElementById("tutorialOverlay"),
+  tutorialCloseBtn: document.getElementById("tutorialCloseBtn"),
+  tutorialStepLabel: document.getElementById("tutorialStepLabel"),
+  tutorialTitle: document.getElementById("tutorialTitle"),
+  tutorialProgress: document.getElementById("tutorialProgress"),
+  tutorialBody: document.getElementById("tutorialBody"),
+  difficultyPicker: document.getElementById("difficultyPicker"),
+  tutorialBackBtn: document.getElementById("tutorialBackBtn"),
+  tutorialSkipBtn: document.getElementById("tutorialSkipBtn"),
+  tutorialNextBtn: document.getElementById("tutorialNextBtn"),
   zoomInBtn: document.getElementById("zoomInBtn"),
   zoomOutBtn: document.getElementById("zoomOutBtn"),
   zoomResetBtn: document.getElementById("zoomResetBtn"),
@@ -87,6 +103,19 @@ const TILE_H = 36;
 const W = 28;
 const H = 28;
 const SAVE_KEY = "yumeshimaParkSaveV1";
+const TUTORIAL_KEY = "yumeshimaParkTutorialV1";
+const DIFFICULTY_CONFIGS = {
+  beginner: { label: "はじめて", initialMoney: 30000, costMultiplier: .8, graceRounds: 2, graceMultiplier: .5 },
+  standard: { label: "標準", initialMoney: 24000, costMultiplier: .95, graceRounds: 1, graceMultiplier: .75 },
+  challenge: { label: "挑戦", initialMoney: 18000, costMultiplier: 1, graceRounds: 0, graceMultiplier: 1 }
+};
+const SHOP_CONFIG = {
+  capacities: { beginner: 60, standard: 45, challenge: 30 },
+  deliverySize: 30,
+  deliverySeconds: 8,
+  autoUnitCost: 3,
+  instantUnitCost: 4
+};
 const GUEST_ARCHETYPES = {
   family: { label: "子ども連れ", rideBias: { carousel: 12, teacups: 9, wheel: 4, coaster: -8 }, hungerRate: 1.15, fatigueRate: 1.05 },
   thrill: { label: "絶叫好き", rideBias: { coaster: 18, wheel: 7, carousel: -5, teacups: -4 }, hungerRate: .9, fatigueRate: .85 },
@@ -153,7 +182,7 @@ const tools = {
   wheel: { cost: 3200, label: "観覧車", ride: true, cap: 10, duration: 13, appeal: 27, upkeep: 28, defaultPrice: 10, color: "#49abc2" },
   coaster: { cost: 4800, label: "コースター", ride: true, cap: 12, duration: 10, appeal: 36, upkeep: 45, defaultPrice: 14, color: "#f1b84f" },
   teacups: { cost: 1400, label: "ティーカップ", ride: true, cap: 6, duration: 7, appeal: 15, upkeep: 14, defaultPrice: 6, color: "#9bcf67" },
-  kiosk: { cost: 900, label: "スナック売店", shop: true, defaultPrice: 8, maxStock: 30 },
+  kiosk: { cost: 900, label: "スナック売店", shop: true, defaultPrice: 8, maxStock: 60 },
   bench: { cost: 180, label: "パークベンチ", amenity: "bench", scenery: 2, upkeep: 1 },
   trash_bin: { cost: 120, label: "ごみ箱", amenity: "bin", scenery: 1, upkeep: 2, maxFill: 24 },
   toilet: { cost: 1200, label: "パークトイレ", amenity: "toilet", scenery: 2, upkeep: 12 },
@@ -185,6 +214,8 @@ let selectedTool = "inspect";
 let selectedHero = localStorage.getItem("parkHero") || "male";
 let paused = false;
 let pausedBeforeReport = false;
+let pausedBeforeTutorial = false;
+let tutorialStep = 0;
 let last = performance.now();
 let spawnTimer = 0;
 let incomeTimer = 0;
@@ -198,7 +229,7 @@ let progressionRenderSignature = "";
 const undoStack = [];
 
 const state = {
-  money: 18000,
+  money: DIFFICULTY_CONFIGS.beginner.initialMoney,
   clean: 91,
   happy: 82,
   day: 1,
@@ -206,6 +237,7 @@ const state = {
   guestsServed: 0,
   sentiment: 0,
   admissionFee: 25,
+  difficulty: "beginner",
   finance: {
     admissionRevenue: 0,
     rideRevenue: 0,
@@ -279,7 +311,7 @@ for (let y = 10; y < 19; y++) tileAt(8, y).path = true;
 placeStarterObject(3, 13, "bus_stop");
 placeStarterRide(11, 13, "carousel");
 placeStarterRide(8, 9, "teacups");
-placeStarterObject(5, 12, "kiosk");
+placeStarterObject(5, 13, "kiosk");
 for (const [x, y] of [[6,16],[10,16],[12,11],[4,10],[13,15],[9,18]]) placeStarterObject(x, y, "tree");
 for (const [x, y] of [[5,15],[11,12],[7,17]]) placeStarterObject(x, y, "shrub");
 for (const [x, y] of [[9,12],[10,15],[12,14]]) placeStarterObject(x, y, "flower");
@@ -307,7 +339,7 @@ function placeStarterRide(x, y, type) {
 
 function placeStarterObject(x, y, type) {
   if (type === "kiosk") {
-    tileAt(x, y).object = { type, stock: tools.kiosk.maxStock, maxStock: tools.kiosk.maxStock, price: tools.kiosk.defaultPrice };
+    tileAt(x, y).object = createShop();
     return;
   }
   if (tools[type]?.transit) {
@@ -317,6 +349,32 @@ function placeStarterObject(x, y, type) {
     return;
   }
   tileAt(x, y).object = { type };
+}
+
+function shopCapacityForDifficulty(mode = state.difficulty) {
+  return SHOP_CONFIG.capacities[mode] || SHOP_CONFIG.capacities.beginner;
+}
+
+function createShop(saved = null) {
+  const legacySave = !!saved && saved.autoRestock === undefined;
+  const difficultyCapacity = shopCapacityForDifficulty();
+  const maxStock = saved
+    ? Math.max(1, legacySave ? Math.max(Number(saved.maxStock || 0), difficultyCapacity) : Number(saved.maxStock || difficultyCapacity))
+    : difficultyCapacity;
+  return {
+    type: "kiosk",
+    stock: clamp(Number(saved?.stock ?? maxStock), 0, maxStock),
+    maxStock,
+    price: clamp(Number(saved?.price ?? tools.kiosk.defaultPrice), 1, 20),
+    autoRestock: saved?.autoRestock === undefined ? true : !!saved.autoRestock,
+    deliveryTimer: Math.max(0, Number(saved?.deliveryTimer || 0)),
+    pendingStock: clamp(Number(saved?.pendingStock || 0), 0, SHOP_CONFIG.deliverySize),
+    sales: Math.max(0, Number(saved?.sales || 0)),
+    lostSales: Math.max(0, Number(saved?.lostSales || 0)),
+    orders: Math.max(0, Number(saved?.orders || 0)),
+    deliveries: Math.max(0, Number(saved?.deliveries || 0)),
+    orderBlocked: false
+  };
 }
 
 function transitNetwork(mode = state.transit.activeMode) {
@@ -921,8 +979,14 @@ function drawKiosk(p, kiosk = {}) {
   ctx.fillStyle = "#26313f";
   ctx.fillRect(4 * z, -2 * z, 8 * z, 12 * z);
   drawFlag(-24 * z, -14 * z, "#f1b84f", -1);
-  if (Number(kiosk.stock ?? tools.kiosk.maxStock) <= 0) {
+  const stock = Number(kiosk.stock ?? tools.kiosk.maxStock);
+  const maxStock = Number(kiosk.maxStock ?? tools.kiosk.maxStock);
+  if (stock <= 0) {
     drawRideStatusBadge("売切", -17 * z, -49 * z, "#d84f4f");
+  } else if (Number(kiosk.pendingStock || 0) > 0) {
+    drawRideStatusBadge("配送", -17 * z, -49 * z, "#1b7e97");
+  } else if (stock <= maxStock * .2) {
+    drawRideStatusBadge("残少", -17 * z, -49 * z, "#b47a16");
   }
   ctx.restore();
 }
@@ -1656,6 +1720,58 @@ function updateStaffAgents(dt) {
   }
 }
 
+function shopTiles() {
+  return state.tiles.filter(tile => tools[tile.object?.type]?.shop);
+}
+
+function shopReorderPoint(shop) {
+  return Math.max(6, Math.ceil(Number(shop.maxStock || shopCapacityForDifficulty()) * .2));
+}
+
+function placeShopOrder(shop, options = {}) {
+  if (!shop || Number(shop.pendingStock || 0) > 0) return false;
+  const maxStock = Number(shop.maxStock || shopCapacityForDifficulty());
+  const missing = Math.max(0, maxStock - Number(shop.stock || 0));
+  const quantity = Math.min(SHOP_CONFIG.deliverySize, missing);
+  if (!quantity) return false;
+  const cost = quantity * SHOP_CONFIG.autoUnitCost;
+  if (state.money < cost) {
+    shop.orderBlocked = true;
+    if (!options.silent) toast("自動発注の仕入れ資金が足りません");
+    return false;
+  }
+  state.money -= cost;
+  state.finance.restockExpenses += cost;
+  shop.pendingStock = quantity;
+  shop.deliveryTimer = SHOP_CONFIG.deliverySeconds;
+  shop.orders = Number(shop.orders || 0) + 1;
+  shop.orderBlocked = false;
+  if (!options.silent) toast(`${quantity}個を発注しました。${SHOP_CONFIG.deliverySeconds}秒後に届きます`);
+  return true;
+}
+
+function updateShops(dt) {
+  for (const tile of shopTiles()) {
+    const shop = tile.object;
+    if (Number(shop.pendingStock || 0) > 0) {
+      const previousSecond = Math.ceil(Number(shop.deliveryTimer || 0));
+      shop.deliveryTimer = Math.max(0, Number(shop.deliveryTimer || 0) - dt);
+      if (shop.deliveryTimer <= 0) {
+        shop.stock = Math.min(Number(shop.maxStock || shopCapacityForDifficulty()), Number(shop.stock || 0) + Number(shop.pendingStock || 0));
+        shop.pendingStock = 0;
+        shop.deliveries = Number(shop.deliveries || 0) + 1;
+        shop.orderBlocked = false;
+        if (selectedTile?.object === shop) inspect(selectedTile);
+      } else if (selectedTile?.object === shop && Math.ceil(shop.deliveryTimer) !== previousSecond) {
+        inspect(selectedTile);
+      }
+    }
+    if (shop.autoRestock && Number(shop.pendingStock || 0) <= 0 && Number(shop.stock || 0) <= shopReorderPoint(shop)) {
+      placeShopOrder(shop, { silent: true });
+    }
+  }
+}
+
 function update(dt) {
   if (paused) return;
   spawnTimer += dt;
@@ -1672,6 +1788,7 @@ function update(dt) {
   updateBuses(dt);
   updateMonorails(dt);
   updateParkTrains(dt);
+  updateShops(dt);
   for (const ride of state.rides) updateRide(ride, dt);
   updateStaffAgents(dt);
   for (const guest of state.guests) updateGuest(guest, dt);
@@ -1702,21 +1819,42 @@ function operatingCostBreakdown() {
     const tool = tools[tile.object?.type];
     return sum + (tool?.amenity ? Number(tool.upkeep || 0) : 0);
   }, 0);
-  const maintenance = rideMaintenance + amenityMaintenance;
-  const staff = state.staff.cleaners * 35 + state.staff.mechanics * 45;
+  const baseMaintenance = rideMaintenance + amenityMaintenance;
+  const baseStaff = state.staff.cleaners * 35 + state.staff.mechanics * 45;
   const busNetwork = transitNetwork("bus");
   const busConfig = TRANSIT_MODE_CONFIGS.bus;
   const frequencyPremium = Math.max(0, 8 - busNetwork.interval) * 5;
   const monorailNetwork = transitNetwork("monorail");
   const monorailConfig = TRANSIT_MODE_CONFIGS.monorail;
   const railTiles = state.tiles.filter(tile => tile.transitTrack === "monorail").length;
-  const monorail = transitStops("monorail").length * 18 + railTiles * 2 + monorailNetwork.fleet * monorailConfig.vehicleUpkeep;
+  const monorailRunning = getTransitRoutePlan("monorail").connectedStopIds.length >= 2;
+  const monorail = transitStops("monorail").length * 18 + railTiles * 2
+    + (monorailRunning ? monorailNetwork.fleet * monorailConfig.vehicleUpkeep : 0);
   const parkTrainNetwork = transitNetwork("park_train");
   const parkTrainConfig = TRANSIT_MODE_CONFIGS.park_train;
   const trainTrackTiles = state.tiles.filter(tile => tile.transitTrack === "park_train").length;
-  const parkTrain = transitStops("park_train").length * 14 + trainTrackTiles * 1.5 + parkTrainNetwork.fleet * parkTrainConfig.vehicleUpkeep;
-  const transit = busStops().length * 6 + busNetwork.fleet * busConfig.vehicleUpkeep + frequencyPremium + monorail + parkTrain;
-  return { maintenance, staff, transit, total: Math.round(maintenance + staff + transit) };
+  const parkTrainRunning = getTransitRoutePlan("park_train").connectedStopIds.length >= 2;
+  const parkTrain = transitStops("park_train").length * 14 + trainTrackTiles * 1.5
+    + (parkTrainRunning ? parkTrainNetwork.fleet * parkTrainConfig.vehicleUpkeep : 0);
+  const baseTransit = busStops().length * 6 + busNetwork.fleet * busConfig.vehicleUpkeep + frequencyPremium + monorail + parkTrain;
+  const factor = difficultyCostFactor();
+  const maintenance = baseMaintenance * factor;
+  const staff = baseStaff * factor;
+  const transit = baseTransit * factor;
+  return {
+    maintenance,
+    staff,
+    transit,
+    factor,
+    baseTotal: Math.round(baseMaintenance + baseStaff + baseTransit),
+    total: Math.round(maintenance + staff + transit)
+  };
+}
+
+function difficultyCostFactor() {
+  const config = DIFFICULTY_CONFIGS[state.difficulty] || DIFFICULTY_CONFIGS.beginner;
+  const grace = state.round <= config.graceRounds ? config.graceMultiplier : 1;
+  return config.costMultiplier * grace;
 }
 
 function operatingCost() {
@@ -1971,11 +2109,16 @@ function localSceneryScore(object) {
 function chooseShop(guest) {
   const choices = state.tiles
     .filter(tile => tools[tile.object?.type]?.shop && Number(tile.object.stock ?? 0) > 0)
-    .map(tile => ({ tile, pathTile: nearestPathForTile(tile) }))
+    .map(tile => ({
+      tile,
+      pathTile: nearestPathForTile(tile),
+      demand: state.guests.filter(candidate => candidate !== guest && candidate.goalType === "shop" && candidate.goal === tile.object).length,
+      stockRatio: Number(tile.object.stock || 0) / Math.max(1, Number(tile.object.maxStock || shopCapacityForDifficulty()))
+    }))
     .filter(choice => choice.pathTile && (choice.pathTile === guest.tile || findPath(guest.tile, choice.pathTile).length));
-  choices.sort((a, b) =>
-    Math.abs(a.tile.x - guest.tile.x) + Math.abs(a.tile.y - guest.tile.y)
-    - Math.abs(b.tile.x - guest.tile.x) - Math.abs(b.tile.y - guest.tile.y));
+  const score = choice => Math.abs(choice.tile.x - guest.tile.x) + Math.abs(choice.tile.y - guest.tile.y)
+    + choice.demand * 3 - choice.stockRatio * 4;
+  choices.sort((a, b) => score(a) - score(b));
   return choices[0] || null;
 }
 
@@ -2112,16 +2255,29 @@ function updateGuest(g, dt) {
       g.path = findPath(g.tile, choice.pathTile);
       guestThought(g, "おなかが空いたので売店へ行こう", "売店へ行こう", "neutral");
     } else if (g.hunger >= 80) {
-      guestThought(g, "食べ物を買える売店が見つからない", "売店がない", "negative");
-      g.satisfaction -= dt * .15;
+      const deliveryPending = shopTiles().some(tile => Number(tile.object.pendingStock || 0) > 0);
+      guestThought(
+        g,
+        deliveryPending ? "売店の商品が配送中なので少し待とう" : "食べ物を買える売店が見つからない",
+        deliveryPending ? "商品を配送中" : "売店がない",
+        deliveryPending ? "neutral" : "negative"
+      );
+      g.satisfaction -= dt * (deliveryPending ? .04 : .15);
     }
   }
 
   if (!g.path.length) {
     if (g.state === "leaving") { g.done = true; return; }
     if (g.goalType === "shop" && g.goal) {
-      buyFromShop(g, g.goal);
-      routeGuestToRideOrExit(g);
+      const purchased = buyFromShop(g, g.goal);
+      const alternative = !purchased && !g.spent ? chooseShop(g) : null;
+      if (alternative) {
+        g.goal = alternative.tile.object;
+        g.goalType = "shop";
+        g.path = findPath(g.tile, alternative.pathTile);
+      } else {
+        routeGuestToRideOrExit(g);
+      }
     } else if (["bench", "toilet"].includes(g.goalType) && g.goal) {
       beginAmenityUse(g);
     } else if (g.goal) {
@@ -2177,19 +2333,21 @@ function buyFromShop(guest, shop) {
   if (guest.spent) return false;
   const stock = Number(shop.stock ?? 0);
   const price = Number(shop.price ?? tools.kiosk.defaultPrice);
-  guest.spent = true;
   if (stock <= 0) {
+    shop.lostSales = Number(shop.lostSales || 0) + 1;
     guest.satisfaction -= 7;
     state.sentiment = clamp(state.sentiment - .3, -20, 20);
     guestThought(guest, "売店の商品が売り切れていた", "売り切れだ", "negative", true);
     return false;
   }
+  guest.spent = true;
   if (price > guest.budget) {
     guest.satisfaction -= 5;
     guestThought(guest, "売店の商品が予算より高かった", "ちょっと高い", "negative", true);
     return false;
   }
   shop.stock--;
+  shop.sales = Number(shop.sales || 0) + 1;
   guest.budget -= price;
   guest.hunger = Math.max(8, guest.hunger - 58);
   state.money += price;
@@ -2198,6 +2356,7 @@ function buyFromShop(guest, shop) {
   state.sentiment = clamp(state.sentiment + value, -20, 20);
   guest.satisfaction += value >= 0 ? 5 : -3;
   guestThought(guest, value >= 0 ? "おいしくて値段もちょうどいい" : "おいしいけれど少し高い", value >= 0 ? "おいしい" : "少し高い", value >= 0 ? "positive" : "negative", true);
+  if (shop.autoRestock && Number(shop.stock || 0) <= shopReorderPoint(shop)) placeShopOrder(shop, { silent: true });
   return true;
 }
 
@@ -2493,6 +2652,13 @@ function snapshotObject(object) {
     saved.stock = Number(object.stock ?? tools.kiosk.maxStock);
     saved.maxStock = Number(object.maxStock ?? tools.kiosk.maxStock);
     saved.price = Number(object.price ?? tools.kiosk.defaultPrice);
+    saved.autoRestock = !!object.autoRestock;
+    saved.deliveryTimer = Number(object.deliveryTimer || 0);
+    saved.pendingStock = Number(object.pendingStock || 0);
+    saved.sales = Number(object.sales || 0);
+    saved.lostSales = Number(object.lostSales || 0);
+    saved.orders = Number(object.orders || 0);
+    saved.deliveries = Number(object.deliveries || 0);
   } else if (tools[object.type]?.amenity) {
     saved.usage = Number(object.usage || 0);
     saved.fill = Number(object.fill || 0);
@@ -2518,13 +2684,7 @@ function restoreObject(saved) {
     };
   }
   if (tools[saved.type].shop) {
-    const maxStock = Math.max(1, Number(saved.maxStock ?? tools.kiosk.maxStock));
-    return {
-      type: saved.type,
-      stock: clamp(Number(saved.stock ?? maxStock), 0, maxStock),
-      maxStock,
-      price: clamp(Number(saved.price ?? tools.kiosk.defaultPrice), 1, 20)
-    };
+    return createShop(saved);
   }
   if (tools[saved.type].amenity) {
     const maxFill = Number(saved.maxFill || tools[saved.type].maxFill || 0);
@@ -2713,6 +2873,7 @@ function saveGame() {
     guestsServed: state.guestsServed,
     sentiment: state.sentiment,
     admissionFee: state.admissionFee,
+    difficulty: state.difficulty,
     finance: { ...state.finance },
     guestLog: state.guestLog,
     staff: { ...state.staff },
@@ -2751,6 +2912,7 @@ function loadGame() {
     state.guestsServed = Math.max(0, Number(save.guestsServed) || 0);
     state.sentiment = clamp(Number(save.sentiment) || 0, -20, 20);
     state.admissionFee = clamp(Number(save.admissionFee ?? 25), 0, 75);
+    state.difficulty = DIFFICULTY_CONFIGS[save.difficulty] ? save.difficulty : "standard";
     state.finance = {
       admissionRevenue: Math.max(0, Number(save.finance?.admissionRevenue) || 0),
       rideRevenue: Math.max(0, Number(save.finance?.rideRevenue) || 0),
@@ -2870,9 +3032,48 @@ function computeStats() {
   ui.admissionRevenue.textContent = `$${Math.round(state.finance.admissionRevenue).toLocaleString()}`;
   ui.rideRevenue.textContent = `$${Math.round(state.finance.rideRevenue).toLocaleString()}`;
   ui.shopRevenue.textContent = `$${Math.round(state.finance.shopRevenue).toLocaleString()}`;
+  const shops = shopTiles().map(tile => tile.object);
+  const totalShopStock = shops.reduce((sum, shop) => sum + Number(shop.stock || 0), 0);
+  const totalShopCapacity = shops.reduce((sum, shop) => sum + Number(shop.maxStock || 0), 0);
+  const pendingDeliveries = shops.filter(shop => Number(shop.pendingStock || 0) > 0);
+  const blockedOrders = shops.filter(shop => shop.orderBlocked).length;
+  ui.shopStockTotal.textContent = `${Math.floor(totalShopStock)} / ${Math.floor(totalShopCapacity)}`;
+  ui.shopDeliveryStatus.textContent = pendingDeliveries.length
+    ? `配送中 ${pendingDeliveries.length}件`
+    : blockedOrders
+      ? `資金不足 ${blockedOrders}店`
+      : "配送待ちなし";
   ui.expenseTotal.textContent = `$${Math.round(expenses).toLocaleString()}`;
   ui.netTotal.textContent = `${net >= 0 ? "+" : "-"}$${Math.abs(Math.round(net)).toLocaleString()}`;
   ui.netTotal.classList.toggle("negative", net < 0);
+  const difficulty = DIFFICULTY_CONFIGS[state.difficulty] || DIFFICULTY_CONFIGS.beginner;
+  const costFactor = difficultyCostFactor();
+  const costReduction = Math.round((1 - costFactor) * 100);
+  ui.difficultyLabel.textContent = difficulty.label;
+  ui.subsidyStatus.textContent = costReduction > 0 ? `運営費 ${costReduction}%軽減` : "補助なし";
+  ui.subsidyStatus.style.color = costReduction > 0 ? "var(--green)" : "var(--muted)";
+  const currentCost = operatingCost();
+  let financeHint = state.round <= difficulty.graceRounds
+    ? `序盤補助中です。建て急がず、収入が支出を上回るか観察しましょう。`
+    : "収支は安定しています。需要を見ながら少しずつ拡張しましょう。";
+  let financeWarning = false;
+  if (state.money < currentCost * 5) {
+    financeHint = "資金が少なくなっています。新規建設を止め、不要なスタッフや交通費を見直しましょう。";
+    financeWarning = true;
+  } else if (net < -currentCost) {
+    financeHint = "今ラウンドは赤字です。入園料は$20〜30を目安にし、稼働していない設備の追加を控えましょう。";
+    financeWarning = true;
+  } else if (expenses > revenue && revenue > 0) {
+    financeHint = "支出が売上を上回っています。次の建設前に料金・行列・スタッフ稼働を確認しましょう。";
+    financeWarning = true;
+  }
+  const soldOutWithoutDelivery = shops.filter(shop => Number(shop.stock || 0) <= 0 && Number(shop.pendingStock || 0) <= 0).length;
+  if (soldOutWithoutDelivery) {
+    financeHint = `売り切れの売店が${soldOutWithoutDelivery}店あります。売店を調べて発注するか、自動発注をオンにしましょう。`;
+    financeWarning = true;
+  }
+  ui.financeHint.textContent = financeHint;
+  ui.financeHint.classList.toggle("warning", financeWarning);
   ui.brokenCount.textContent = broken;
   ui.conditionAverage.textContent = `${Math.round(averageCondition)}%`;
   ui.activeCleaners.textContent = state.staffAgents.filter(agent => agent.role === "cleaner" && agent.state === "cleaning").length;
@@ -3027,7 +3228,7 @@ function getPlacementStatus(tile, toolName = selectedTool) {
     const valid = !tile.object && !tile.path && tile.terrain !== "water";
     return { valid, reason: valid ? "" : "水辺には空いた土地が必要です" };
   }
-  if (tool.amenity) {
+  if (tool.amenity || tool.shop) {
     const clear = !tile.object && !tile.path && tile.terrain !== "water";
     if (!clear) return { valid: false, reason: "施設には空いた芝生が必要です" };
     const connected = !!nearestPathForTile(tile);
@@ -3189,12 +3390,7 @@ function build(tile, options = {}) {
     };
     state.rides.push(tile.object);
   } else if (tool.shop) {
-    tile.object = {
-      type: selectedTool,
-      stock: tool.maxStock,
-      maxStock: tool.maxStock,
-      price: tool.defaultPrice
-    };
+    tile.object = createShop();
   } else if (tool.amenity) {
     tile.object = {
       type: selectedTool,
@@ -3271,9 +3467,19 @@ function inspect(tile) {
     else if (t.shop) {
       const stock = Number(tile.object.stock ?? 0);
       const maxStock = Number(tile.object.maxStock ?? tools.kiosk.maxStock);
-      const restockCost = (maxStock - stock) * 3;
-      body = `在庫 ${stock}/${maxStock}。近くを通ったゲストが在庫から商品を購入します。`;
-      controls = `<div class="inline-economy"><span>商品価格</span><div class="stepper"><button data-action="shop-price-down" title="商品価格を下げる">−</button><b>$${tile.object.price}</b><button data-action="shop-price-up" title="商品価格を上げる">＋</button></div><button class="restock-btn" data-action="restock" ${restockCost <= 0 ? "disabled" : ""}>補充 $${restockCost}</button></div>`;
+      const pending = Number(tile.object.pendingStock || 0);
+      const instantQuantity = Math.max(0, maxStock - stock - pending);
+      const restockCost = instantQuantity * SHOP_CONFIG.instantUnitCost;
+      const orderQuantity = Math.min(SHOP_CONFIG.deliverySize, Math.max(0, maxStock - stock));
+      const orderCost = orderQuantity * SHOP_CONFIG.autoUnitCost;
+      const stockPercent = Math.round(stock / Math.max(1, maxStock) * 100);
+      const delivery = pending > 0
+        ? `配送中 ${Math.ceil(tile.object.deliveryTimer)}秒・${pending}個`
+        : tile.object.orderBlocked
+          ? "仕入れ資金不足"
+          : "配送待ちなし";
+      body = `在庫 ${stock}/${maxStock}、${delivery}。累計販売 ${Math.floor(tile.object.sales || 0)}個、品切れ損失 ${Math.floor(tile.object.lostSales || 0)}件。`;
+      controls = `<div class="shop-stock-meter"><i class="${stockPercent <= 20 ? "low" : ""}" style="width:${stockPercent}%"></i></div><div class="inline-economy"><span>商品価格</span><div class="stepper"><button data-action="shop-price-down" title="商品価格を下げる">−</button><b>$${tile.object.price}</b><button data-action="shop-price-up" title="商品価格を上げる">＋</button></div><button class="restock-btn" data-action="restock" ${restockCost <= 0 ? "disabled" : ""}>即時 $${restockCost}</button></div><div class="shop-actions"><button class="${tile.object.autoRestock ? "active" : ""}" data-action="shop-auto-toggle">自動発注 ${tile.object.autoRestock ? "ON" : "OFF"}</button><button data-action="shop-order" ${pending > 0 || orderQuantity <= 0 ? "disabled" : ""}>${orderQuantity}個発注 $${orderCost}</button></div>`;
     }
     else if (t.amenity === "bench") {
       body = `累計 ${Math.floor(tile.object.usage || 0)}回利用。疲れたゲストが通路から立ち寄り、休憩して元気を取り戻します。`;
@@ -3494,6 +3700,83 @@ document.querySelectorAll("[data-hero]").forEach(btn => {
 });
 applyHeroSelection(selectedHero, true);
 
+const TUTORIAL_STEPS = [
+  {
+    title: "ようこそ、園長さん",
+    body: `<p>まず難易度を選びます。初めてなら <strong>「はじめて」</strong> がおすすめです。初期資金が多く、最初の2ラウンドは運営費が大きく軽減されます。</p><p class="tutorial-tip">難易度を変えても、ゲームの機能やアンロック内容は同じです。</p>`
+  },
+  {
+    title: "最初は建てすぎない",
+    body: `<p>スターター設備だけでも開園できます。最初はゲストの行列と感想を観察し、<strong>通路に接した設備だけ</strong>を少しずつ追加しましょう。</p><p class="tutorial-tip">大きなライド、交通車両、スタッフは建設費に加えて定期的な運営費がかかります。</p>`
+  },
+  {
+    title: "料金とスタッフを見る",
+    body: `<p>入園料は <strong>$20〜30</strong> が序盤の目安です。高すぎると来園を断られます。ライド料金は施設を調べると変更できます。</p><p>ごみが残るなら清掃員、故障が長引くなら整備員を増やします。仕事が少ないときの過剰雇用は赤字につながります。</p>`
+  },
+  {
+    title: "収支を確認して拡張",
+    body: `<p>管理画面の <strong>料金・運営収支</strong> で売上と支出を比較します。赤字のヒントが表示されたら、建設を止めて料金・スタッフ・交通を見直しましょう。</p><p class="tutorial-tip">ラウンド終了前にセーブし、黒字と経営目標を確認してから次の区画へ広げるのが安定経営の近道です。</p>`
+  }
+];
+
+function setDifficulty(mode, options = {}) {
+  if (!DIFFICULTY_CONFIGS[mode]) return false;
+  const previous = DIFFICULTY_CONFIGS[state.difficulty] || DIFFICULTY_CONFIGS.beginner;
+  const pristine = state.round === 1
+    && state.guestsServed === 0
+    && Object.values(state.finance).every(value => Number(value || 0) === 0)
+    && state.money === previous.initialMoney;
+  state.difficulty = mode;
+  if (options.adjustFunds !== false && pristine) {
+    state.money = DIFFICULTY_CONFIGS[mode].initialMoney;
+    for (const tile of shopTiles()) tile.object = createShop();
+  }
+  renderTutorial();
+  computeStats();
+  if (!options.silent) toast(`難易度を「${DIFFICULTY_CONFIGS[mode].label}」に設定しました`);
+  return true;
+}
+
+function renderTutorial() {
+  const step = TUTORIAL_STEPS[tutorialStep];
+  if (!step) return;
+  ui.tutorialStepLabel.textContent = `STEP ${tutorialStep + 1} / ${TUTORIAL_STEPS.length}`;
+  ui.tutorialTitle.textContent = step.title;
+  ui.tutorialBody.innerHTML = step.body;
+  ui.tutorialProgress.style.width = `${(tutorialStep + 1) / TUTORIAL_STEPS.length * 100}%`;
+  ui.difficultyPicker.hidden = tutorialStep !== 0;
+  ui.tutorialBackBtn.disabled = tutorialStep === 0;
+  ui.tutorialNextBtn.textContent = tutorialStep === TUTORIAL_STEPS.length - 1 ? "開園する" : "次へ";
+  document.querySelectorAll("[data-difficulty]").forEach(button => {
+    button.classList.toggle("active", button.dataset.difficulty === state.difficulty);
+  });
+}
+
+function openTutorial(step = 0) {
+  tutorialStep = clamp(step, 0, TUTORIAL_STEPS.length - 1);
+  pausedBeforeTutorial = paused;
+  paused = true;
+  ui.pauseBtn.textContent = "再開";
+  ui.tutorialOverlay.hidden = false;
+  renderTutorial();
+}
+
+function closeTutorial(markSeen = true) {
+  ui.tutorialOverlay.hidden = true;
+  if (markSeen) localStorage.setItem(TUTORIAL_KEY, "1");
+  paused = pausedBeforeTutorial;
+  ui.pauseBtn.textContent = paused ? "再開" : "停止";
+}
+
+function advanceTutorial() {
+  if (tutorialStep >= TUTORIAL_STEPS.length - 1) {
+    closeTutorial(true);
+    return;
+  }
+  tutorialStep++;
+  renderTutorial();
+}
+
 function adjustStaff(role, delta) {
   const labels = { cleaners: "清掃員", mechanics: "整備員" };
   const current = state.staff[role];
@@ -3539,19 +3822,39 @@ function restockSelectedKiosk() {
   const shop = selectedTile?.object;
   if (!tools[shop?.type]?.shop) return;
   const maxStock = Number(shop.maxStock ?? tools.kiosk.maxStock);
-  const missing = Math.max(0, maxStock - Number(shop.stock ?? 0));
+  const missing = Math.max(0, maxStock - Number(shop.stock ?? 0) - Number(shop.pendingStock || 0));
   if (!missing) return;
-  const cost = missing * 3;
+  const cost = missing * SHOP_CONFIG.instantUnitCost;
   if (state.money < cost) {
     toast("仕入れ資金が足りません");
     return;
   }
   state.money -= cost;
   state.finance.restockExpenses += cost;
-  shop.stock = maxStock;
+  shop.stock = Math.min(maxStock, Number(shop.stock || 0) + missing);
   inspect(selectedTile);
   computeStats();
   toast(`商品を ${missing} 個補充しました`);
+}
+
+function toggleSelectedShopAutoRestock() {
+  const shop = selectedTile?.object;
+  if (!tools[shop?.type]?.shop) return false;
+  shop.autoRestock = !shop.autoRestock;
+  if (shop.autoRestock && Number(shop.stock || 0) <= shopReorderPoint(shop)) placeShopOrder(shop, { silent: true });
+  inspect(selectedTile);
+  computeStats();
+  toast(`自動発注を${shop.autoRestock ? "オン" : "オフ"}にしました`);
+  return true;
+}
+
+function orderSelectedShop() {
+  const shop = selectedTile?.object;
+  if (!tools[shop?.type]?.shop) return false;
+  const ordered = placeShopOrder(shop);
+  inspect(selectedTile);
+  computeStats();
+  return ordered;
 }
 
 function transitStopTile(stopOrId = selectedTile) {
@@ -3729,6 +4032,17 @@ ui.continueReportBtn.addEventListener("click", closeRoundReport);
 ui.saveBtn.addEventListener("click", saveGame);
 ui.undoBtn.addEventListener("click", undoLastBuild);
 ui.loadBtn.addEventListener("click", loadGame);
+ui.tutorialBtn.addEventListener("click", () => openTutorial(0));
+ui.tutorialCloseBtn.addEventListener("click", () => closeTutorial(true));
+ui.tutorialSkipBtn.addEventListener("click", () => closeTutorial(false));
+ui.tutorialBackBtn.addEventListener("click", () => {
+  tutorialStep = Math.max(0, tutorialStep - 1);
+  renderTutorial();
+});
+ui.tutorialNextBtn.addEventListener("click", advanceTutorial);
+document.querySelectorAll("[data-difficulty]").forEach(button => {
+  button.addEventListener("click", () => setDifficulty(button.dataset.difficulty));
+});
 ui.cleanerMinus.addEventListener("click", () => adjustStaff("cleaners", -1));
 ui.cleanerPlus.addEventListener("click", () => adjustStaff("cleaners", 1));
 ui.mechanicMinus.addEventListener("click", () => adjustStaff("mechanics", -1));
@@ -3749,6 +4063,8 @@ ui.selected.addEventListener("click", event => {
   if (action === "ride-price-down" || action === "shop-price-down") adjustSelectedPrice(-1);
   if (action === "ride-price-up" || action === "shop-price-up") adjustSelectedPrice(1);
   if (action === "restock") restockSelectedKiosk();
+  if (action === "shop-auto-toggle") toggleSelectedShopAutoRestock();
+  if (action === "shop-order") orderSelectedShop();
   if (action === "route-toggle") toggleStopInRoute();
   if (action === "route-up") moveStopInRoute(selectedTile, -1);
   if (action === "route-down") moveStopInRoute(selectedTile, 1);
@@ -3779,6 +4095,7 @@ renderGuestLog();
 updateUndoButton();
 syncStaffAgents();
 computeStats();
+if (localStorage.getItem(TUTORIAL_KEY) !== "1") openTutorial(0);
 window.parkDebug = {
   state,
   setTool(tool) {
@@ -3813,6 +4130,8 @@ window.parkDebug = {
       repairJobs: state.staffStats.repairJobs,
       operatingCost: operatingCost(),
       admissionFee: state.admissionFee,
+      difficulty: state.difficulty,
+      costFactor: difficultyCostFactor(),
       sentiment: Number(state.sentiment.toFixed(1)),
       finance: { ...state.finance },
       buses: state.buses.length,
@@ -3831,6 +4150,10 @@ window.parkDebug = {
       parkTrainStations: transitStops("park_train").length,
       parkTrainTrack: state.tiles.filter(tile => tile.transitTrack === "park_train").length,
       parkTrainRiders: Math.floor(transitNetwork("park_train").totalRiders),
+      shopStock: shopTiles().reduce((sum, tile) => sum + Number(tile.object.stock || 0), 0),
+      shopCapacity: shopTiles().reduce((sum, tile) => sum + Number(tile.object.maxStock || 0), 0),
+      shopSales: shopTiles().reduce((sum, tile) => sum + Number(tile.object.sales || 0), 0),
+      shopDeliveries: shopTiles().reduce((sum, tile) => sum + Number(tile.object.deliveries || 0), 0),
       ratingScore: Math.round(rating.score),
       ratingStars: rating.stars,
       bestStars: state.progression.bestStars,
@@ -3859,10 +4182,19 @@ window.parkDebug = {
   closeRoundReport,
   adjustSelectedPrice,
   restockSelectedKiosk,
+  toggleSelectedShopAutoRestock,
+  orderSelectedShop,
+  placeShopOrder,
+  chooseShop,
+  buyFromShop,
   inspect,
   drawWorld,
   update,
   operatingCostBreakdown,
+  difficultyCostFactor,
+  setDifficulty,
+  openTutorial,
+  closeTutorial,
   adjustStaff,
   syncStaffAgents,
   undoLastBuild,
