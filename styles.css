@@ -607,6 +607,36 @@ h1 { margin: 0; font-size: 21px; }
 
 .maintenance-status b { color: var(--ink); }
 
+.staff-activity {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.staff-activity span {
+  min-width: 0;
+  padding: 6px 3px;
+  background: rgba(255, 255, 255, .56);
+  border: 1px solid rgba(45, 59, 70, .1);
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 9px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.staff-activity b { color: var(--ink); }
+.staff-activity i {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 3px;
+  border-radius: 50%;
+}
+.cleaner-dot { background: #49abc2; }
+.mechanic-dot { background: #f1b84f; }
+
 .amenity-status {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

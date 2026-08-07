@@ -95,6 +95,7 @@ vm.runInContext(fs.readFileSync("game.js", "utf8"), sandbox, { filename: "game.j
 
 const debug = sandbox.parkDebug;
 const state = debug.state;
+debug.drawWorld();
 
 assert.equal(state.admissionFee, 25);
 debug.adjustAdmissionFee(5);
@@ -273,17 +274,62 @@ assert.equal(debug.dropLitter(nearBinPath, 3), true);
 assert.equal(nearBinPath.litter, litterBefore);
 assert.equal(binTile.object.fill, 3);
 assert.equal(binTile.object.collected, 3);
-debug.update(3.3);
+const cleaningJobsBefore = state.staffStats.cleaningJobs;
+for (let i = 0; i < 600; i++) debug.update(.05);
 assert.ok(binTile.object.fill < 3, "cleaners should empty trash bins");
+assert.ok(state.staffStats.cleaningJobs > cleaningJobsBefore, "a cleaner should complete a visible cleaning job");
+assert.equal(state.staffAgents.filter(agent => agent.role === "cleaner").length, state.staff.cleaners);
 
+const repairRide = state.rides[0];
+repairRide.broken = true;
+repairRide.condition = 20;
+const repairJobsBefore = state.staffStats.repairJobs;
+for (let i = 0; i < 1000; i++) debug.update(.05);
+assert.equal(repairRide.broken, false, "a mechanic should reopen a broken ride");
+assert.ok(repairRide.condition >= 55);
+assert.ok(state.staffStats.repairJobs > repairJobsBefore, "a mechanic should complete a visible repair job");
+
+const staffAgentsBeforeHire = state.staffAgents.length;
+debug.adjustStaff("cleaners", 1);
+assert.equal(state.staffAgents.length, staffAgentsBeforeHire + 1, "hiring should add a staff character immediately");
+debug.adjustStaff("cleaners", -1);
+assert.equal(state.staffAgents.length, staffAgentsBeforeHire);
+
+const savedAmenityStats = {
+  benchUses: benchTile.object.usage,
+  toiletUses: toiletTile.object.usage,
+  binCollected: binTile.object.collected
+};
 debug.saveGame();
 benchTile.object.usage = 99;
 toiletTile.object.usage = 99;
 binTile.object.collected = 99;
+state.staffStats.cleaningJobs = 999;
 debug.loadGame();
-assert.equal(state.tiles.find(tile => tile.x === 7 && tile.y === 15).object.usage, 1);
-assert.equal(state.tiles.find(tile => tile.x === 9 && tile.y === 15).object.usage, 1);
-assert.equal(state.tiles.find(tile => tile.x === 7 && tile.y === 11).object.collected, 3);
+assert.equal(state.tiles.find(tile => tile.x === 7 && tile.y === 15).object.usage, savedAmenityStats.benchUses);
+assert.equal(state.tiles.find(tile => tile.x === 9 && tile.y === 15).object.usage, savedAmenityStats.toiletUses);
+assert.equal(state.tiles.find(tile => tile.x === 7 && tile.y === 11).object.collected, savedAmenityStats.binCollected);
+assert.ok(state.staffStats.cleaningJobs < 999, "staff job totals should survive save/load");
+assert.equal(state.staffAgents.length, state.staff.cleaners + state.staff.mechanics);
+
+const noStaffLitterTile = state.tiles.find(tile => tile.x === 8 && tile.y === 10);
+const noStaffRide = state.rides[0];
+state.staff.cleaners = 0;
+state.staff.mechanics = 0;
+debug.syncStaffAgents();
+noStaffLitterTile.litter = 2;
+noStaffRide.broken = true;
+noStaffRide.condition = 20;
+for (let i = 0; i < 200; i++) debug.update(.05);
+assert.equal(noStaffLitterTile.litter, 2, "litter should remain without cleaners");
+assert.equal(noStaffRide.broken, true, "broken rides should remain closed without mechanics");
+assert.equal(noStaffRide.condition, 20);
+state.staff.cleaners = 1;
+state.staff.mechanics = 1;
+debug.syncStaffAgents();
+noStaffLitterTile.litter = 0;
+noStaffRide.broken = false;
+noStaffRide.condition = 100;
 
 state.money = 50000;
 const transitCostBefore = debug.operatingCostBreakdown().transit;

@@ -29,6 +29,9 @@ const ui = {
   runningCost: document.getElementById("runningCost"),
   brokenCount: document.getElementById("brokenCount"),
   conditionAverage: document.getElementById("conditionAverage"),
+  activeCleaners: document.getElementById("activeCleaners"),
+  activeMechanics: document.getElementById("activeMechanics"),
+  staffJobs: document.getElementById("staffJobs"),
   benchUses: document.getElementById("benchUses"),
   toiletUses: document.getElementById("toiletUses"),
   binCollected: document.getElementById("binCollected"),
@@ -189,6 +192,7 @@ let expenseTimer = 0;
 let toastTimer = 0;
 let guestSequence = 0;
 let stopSequence = 0;
+let staffSequence = 0;
 let transitRenderSignature = "";
 let progressionRenderSignature = "";
 const undoStack = [];
@@ -211,6 +215,8 @@ const state = {
     restockExpenses: 0
   },
   staff: { cleaners: 1, mechanics: 1 },
+  staffStats: { cleaningJobs: 0, repairJobs: 0 },
+  staffAgents: [],
   tiles: [],
   guests: [],
   rides: [],
@@ -462,7 +468,7 @@ function drawWorld() {
   drawBuses();
   drawMonorails();
   drawParkTrains();
-  drawGuests();
+  drawPeople();
 }
 
 function drawTransitRoute() {
@@ -1167,13 +1173,69 @@ function drawRideStatusBadge(value, x, y, color) {
   ctx.fillText(value, x + 17 * camera.zoom, y + 13 * camera.zoom);
 }
 
-function drawGuests() {
-  const sorted = [...state.guests].sort((a, b) => (a.pos.x + a.pos.y) - (b.pos.x + b.pos.y));
-  for (let i = 0; i < sorted.length; i++) {
-    const g = sorted[i];
-    const p = iso(g.pos.x + .5, g.pos.y + .5, 8);
-    drawGuest(p.x, p.y, g, i);
+function drawPeople() {
+  const people = [
+    ...state.guests.map((person, index) => ({ kind: "guest", person, index })),
+    ...state.staffAgents.map(person => ({ kind: "staff", person, index: 0 }))
+  ].sort((a, b) => (a.person.pos.x + a.person.pos.y) - (b.person.pos.x + b.person.pos.y));
+  for (const entry of people) {
+    const p = iso(entry.person.pos.x + .5, entry.person.pos.y + .5, entry.kind === "staff" ? 10 : 8);
+    if (entry.kind === "staff") drawStaffMember(p.x, p.y, entry.person);
+    else drawGuest(p.x, p.y, entry.person, entry.index);
   }
+}
+
+function drawStaffMember(x, y, agent) {
+  const z = camera.zoom;
+  const cleaner = agent.role === "cleaner";
+  const uniform = cleaner ? "#49abc2" : "#f1b84f";
+  const working = ["cleaning", "repairing"].includes(agent.state);
+  ctx.save();
+  ctx.translate(x, y);
+  drawSoftShadow(0, 11 * z, 9 * z, 3 * z, .16);
+  ctx.strokeStyle = "#26313f";
+  ctx.lineWidth = 2 * z;
+  ctx.beginPath();
+  ctx.moveTo(-3 * z, 5 * z);
+  ctx.lineTo(-5 * z, 12 * z);
+  ctx.moveTo(3 * z, 5 * z);
+  ctx.lineTo(5 * z, 12 * z);
+  ctx.stroke();
+  ctx.fillStyle = uniform;
+  roundRect(-7 * z, -8 * z, 14 * z, 16 * z, 5 * z);
+  ctx.fill();
+  ctx.fillStyle = "#f4c9a4";
+  ctx.beginPath();
+  ctx.arc(0, -13 * z, 6 * z, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#26313f";
+  ctx.beginPath();
+  ctx.arc(0, -16 * z, 6 * z, Math.PI, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = uniform;
+  ctx.fillRect(-7 * z, -18 * z, 14 * z, 3 * z);
+  if (cleaner) {
+    ctx.strokeStyle = "#8b6a42";
+    ctx.lineWidth = 2 * z;
+    ctx.beginPath();
+    ctx.moveTo(7 * z, -4 * z);
+    ctx.lineTo(12 * z, 10 * z);
+    ctx.stroke();
+    ctx.fillStyle = "#66b86b";
+    ctx.fillRect(8 * z, 8 * z, 9 * z, 4 * z);
+  } else {
+    ctx.strokeStyle = "#7b8790";
+    ctx.lineWidth = 3 * z;
+    ctx.beginPath();
+    ctx.moveTo(7 * z, -2 * z);
+    ctx.lineTo(13 * z, 6 * z);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(7 * z, -3 * z, 3 * z, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  if (working) drawRideStatusBadge(cleaner ? "清掃" : "整備", -17 * z, -41 * z, cleaner ? "#1b7e97" : "#b47a16");
+  ctx.restore();
 }
 
 function drawBuses() {
@@ -1396,6 +1458,204 @@ function roundRect(x, y, w, h, r) {
   ctx.quadraticCurveTo(x, y, x + r, y);
 }
 
+function createStaffAgent(role) {
+  return {
+    id: ++staffSequence,
+    role,
+    tile: entrance,
+    pos: { x: entrance.x, y: entrance.y },
+    path: [],
+    target: null,
+    state: "idle",
+    speed: role === "cleaner" ? 1.08 : 1.02,
+    patrolStep: staffSequence * 3,
+    jobsCompleted: 0
+  };
+}
+
+function syncStaffAgents() {
+  const desired = { cleaner: state.staff.cleaners, mechanic: state.staff.mechanics };
+  for (const role of ["cleaner", "mechanic"]) {
+    const current = state.staffAgents.filter(agent => agent.role === role);
+    while (current.length < desired[role]) {
+      const agent = createStaffAgent(role);
+      state.staffAgents.push(agent);
+      current.push(agent);
+    }
+    while (current.length > desired[role]) {
+      const removed = current.pop();
+      state.staffAgents = state.staffAgents.filter(agent => agent !== removed);
+    }
+  }
+}
+
+function staffTaskPath(agent, workTile) {
+  if (!workTile) return null;
+  if (agent.tile === workTile) return [];
+  const path = findPath(agent.tile, workTile);
+  return path.length ? path : null;
+}
+
+function findStaffTask(agent) {
+  const claimed = new Set(state.staffAgents
+    .filter(other => other !== agent && other.target)
+    .map(other => other.target.key));
+  const candidates = [];
+  if (agent.role === "cleaner") {
+    for (const tile of state.tiles) {
+      if (tile.litter > .12) {
+        const workTile = tile.path ? tile : nearestPathForTile(tile);
+        candidates.push({ key: `litter:${key(tile)}`, kind: "litter", tile, workTile, urgency: tile.litter * 8 });
+      }
+      if (tools[tile.object?.type]?.amenity === "bin" && Number(tile.object.fill || 0) > .12) {
+        candidates.push({
+          key: `bin:${key(tile)}`,
+          kind: "bin",
+          tile,
+          object: tile.object,
+          workTile: nearestPathForTile(tile),
+          urgency: Number(tile.object.fill || 0) * 4
+        });
+      }
+    }
+  } else {
+    for (const tile of state.tiles) {
+      const ride = tile.object;
+      if (!tools[ride?.type]?.ride || (!ride.broken && Number(ride.condition ?? 100) >= 82)) continue;
+      candidates.push({
+        key: `ride:${key(tile)}`,
+        kind: "ride",
+        tile,
+        object: ride,
+        workTile: nearestPathForTile(tile),
+        urgency: ride.broken ? 1000 : 100 - Number(ride.condition ?? 100)
+      });
+    }
+  }
+  const reachable = candidates
+    .filter(candidate => !claimed.has(candidate.key))
+    .map(candidate => ({ ...candidate, route: staffTaskPath(agent, candidate.workTile) }))
+    .filter(candidate => candidate.route !== null)
+    .sort((a, b) => {
+      const scoreA = a.urgency - a.route.length * .8;
+      const scoreB = b.urgency - b.route.length * .8;
+      return scoreB - scoreA;
+    });
+  return reachable[0] || null;
+}
+
+function staffTaskIsValid(target) {
+  if (!target) return false;
+  if (target.kind === "litter") return target.tile.litter > .05;
+  if (target.kind === "bin") return target.tile.object === target.object && Number(target.object.fill || 0) > .05;
+  if (target.kind === "ride") {
+    return target.tile.object === target.object && (target.object.broken || Number(target.object.condition ?? 100) < 92);
+  }
+  return false;
+}
+
+function assignStaffTask(agent) {
+  const task = findStaffTask(agent);
+  if (!task) return false;
+  agent.target = task;
+  agent.path = task.route;
+  agent.state = agent.path.length ? "walking" : (agent.role === "cleaner" ? "cleaning" : "repairing");
+  return true;
+}
+
+function sendStaffOnPatrol(agent) {
+  const paths = state.tiles.filter(tile => tile.path && (tile === agent.tile || findPath(agent.tile, tile).length));
+  if (!paths.length) return;
+  agent.patrolStep++;
+  const destination = paths[(agent.id * 7 + agent.patrolStep * 5) % paths.length];
+  agent.path = destination === agent.tile ? [] : findPath(agent.tile, destination);
+  agent.state = agent.path.length ? "patrolling" : "idle";
+}
+
+function moveStaffAgent(agent, dt) {
+  let travel = agent.speed * dt;
+  while (agent.path.length && travel > 0) {
+    const next = agent.path[0];
+    const dx = next.x - agent.pos.x;
+    const dy = next.y - agent.pos.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance <= travel) {
+      agent.pos.x = next.x;
+      agent.pos.y = next.y;
+      agent.tile = next;
+      agent.path.shift();
+      travel -= distance;
+    } else {
+      agent.pos.x += dx / distance * travel;
+      agent.pos.y += dy / distance * travel;
+      travel = 0;
+    }
+  }
+  if (!agent.path.length && agent.target) {
+    agent.state = agent.role === "cleaner" ? "cleaning" : "repairing";
+  } else if (!agent.path.length) {
+    agent.state = "idle";
+  }
+}
+
+function finishStaffTask(agent) {
+  if (agent.role === "cleaner") state.staffStats.cleaningJobs++;
+  else state.staffStats.repairJobs++;
+  agent.jobsCompleted++;
+  agent.target = null;
+  agent.path = [];
+  agent.state = "idle";
+}
+
+function abandonStaffTask(agent) {
+  agent.target = null;
+  agent.path = [];
+  agent.state = "idle";
+}
+
+function workStaffTask(agent, dt) {
+  const target = agent.target;
+  if (!staffTaskIsValid(target)) {
+    if (target?.kind === "litter") target.tile.litter = 0;
+    if (target?.kind === "bin" && target.object) target.object.fill = 0;
+    finishStaffTask(agent);
+    return;
+  }
+  if (target.kind === "litter") {
+    target.tile.litter = Math.max(0, target.tile.litter - dt * 2.4);
+  } else if (target.kind === "bin") {
+    target.object.fill = Math.max(0, Number(target.object.fill || 0) - dt * 4.5);
+  } else {
+    target.object.condition = clamp(Number(target.object.condition ?? 100) + dt * 7.5, 0, 100);
+    if (target.object.broken && target.object.condition >= 55) target.object.broken = false;
+  }
+  if (!staffTaskIsValid(target)) finishStaffTask(agent);
+}
+
+function updateStaffAgents(dt) {
+  syncStaffAgents();
+  for (const agent of state.staffAgents) {
+    if (!agent.tile?.path) {
+      agent.tile = entrance;
+      agent.pos = { x: entrance.x, y: entrance.y };
+      agent.path = [];
+      agent.target = null;
+      agent.state = "idle";
+    }
+    if (agent.path.some(tile => !tile.path)) abandonStaffTask(agent);
+    if (agent.target && !staffTaskIsValid(agent.target)) abandonStaffTask(agent);
+    if (["cleaning", "repairing"].includes(agent.state) && agent.target) {
+      workStaffTask(agent, dt);
+      continue;
+    }
+    if (agent.path.length) {
+      moveStaffAgent(agent, dt);
+      continue;
+    }
+    if (!assignStaffTask(agent)) sendStaffOnPatrol(agent);
+  }
+}
+
 function update(dt) {
   if (paused) return;
   spawnTimer += dt;
@@ -1413,6 +1673,7 @@ function update(dt) {
   updateMonorails(dt);
   updateParkTrains(dt);
   for (const ride of state.rides) updateRide(ride, dt);
+  updateStaffAgents(dt);
   for (const guest of state.guests) updateGuest(guest, dt);
   if (incomeTimer > 3.2) {
     incomeTimer = 0;
@@ -1422,20 +1683,6 @@ function update(dt) {
       20,
       100
     );
-    let cleaningPower = state.staff.cleaners * 1.25;
-    for (const tile of state.tiles) {
-      if (cleaningPower <= 0) break;
-      const removed = Math.min(tile.litter, cleaningPower);
-      tile.litter -= removed;
-      cleaningPower -= removed;
-    }
-    for (const tile of state.tiles) {
-      if (cleaningPower <= 0) break;
-      if (tools[tile.object?.type]?.amenity !== "bin") continue;
-      const removed = Math.min(Number(tile.object.fill || 0), cleaningPower * 2);
-      tile.object.fill -= removed;
-      cleaningPower -= removed / 2;
-    }
   }
   if (expenseTimer > 8) {
     expenseTimer = 0;
@@ -1969,15 +2216,11 @@ function routeGuestToRideOrExit(guest) {
 function updateRide(ride, dt) {
   ride.condition = clamp(Number(ride.condition ?? 100), 0, 100);
   ride.broken = !!ride.broken;
-  const mechanicShare = state.staff.mechanics / Math.max(1, state.rides.length);
-  if (ride.broken) {
-    ride.condition = clamp(ride.condition + dt * mechanicShare * 1.8, 0, 100);
-    if (ride.condition >= 55) ride.broken = false;
-    return;
-  }
+  if (ride.broken) return;
   const debtPenalty = state.money < 0 ? 1.8 : 1;
   const wear = (.04 + (tools[ride.type].upkeep || 10) * .0015) * debtPenalty;
-  ride.condition = clamp(ride.condition - dt * wear / (1 + mechanicShare * .8), 0, 100);
+  const underMaintenance = state.staffAgents.some(agent => agent.role === "mechanic" && agent.target?.object === ride);
+  ride.condition = clamp(ride.condition - dt * wear / (underMaintenance ? 1.8 : 1), 0, 100);
   const failureRisk = ride.condition < 45 ? (45 - ride.condition) * .00075 : 0;
   if (ride.condition <= 10 || Math.random() < dt * failureRisk) {
     ride.broken = true;
@@ -2473,6 +2716,7 @@ function saveGame() {
     finance: { ...state.finance },
     guestLog: state.guestLog,
     staff: { ...state.staff },
+    staffStats: { ...state.staffStats },
     transit: cloneTransitState(),
     progression: JSON.parse(JSON.stringify(state.progression)),
     tiles: state.tiles.map(tile => ({
@@ -2527,6 +2771,12 @@ function loadGame() {
       cleaners: clamp(Number(save.staff?.cleaners ?? 1), 0, 12),
       mechanics: clamp(Number(save.staff?.mechanics ?? 1), 0, 12)
     };
+    state.staffStats = {
+      cleaningJobs: Math.max(0, Number(save.staffStats?.cleaningJobs) || 0),
+      repairJobs: Math.max(0, Number(save.staffStats?.repairJobs) || 0)
+    };
+    state.staffAgents = [];
+    staffSequence = 0;
     state.guests = [];
     state.buses = [];
     state.monorails = [];
@@ -2546,6 +2796,7 @@ function loadGame() {
     restoreTransitState(save.transit);
     transitRenderSignature = "";
     rebuildRideList();
+    syncStaffAgents();
     restoreProgressionState(save.progression);
     progressionRenderSignature = "";
     undoStack.length = 0;
@@ -2624,6 +2875,9 @@ function computeStats() {
   ui.netTotal.classList.toggle("negative", net < 0);
   ui.brokenCount.textContent = broken;
   ui.conditionAverage.textContent = `${Math.round(averageCondition)}%`;
+  ui.activeCleaners.textContent = state.staffAgents.filter(agent => agent.role === "cleaner" && agent.state === "cleaning").length;
+  ui.activeMechanics.textContent = state.staffAgents.filter(agent => agent.role === "mechanic" && agent.state === "repairing").length;
+  ui.staffJobs.textContent = Math.floor(state.staffStats.cleaningJobs + state.staffStats.repairJobs);
   const amenities = state.tiles.map(tile => tile.object).filter(object => tools[object?.type]?.amenity);
   ui.benchUses.textContent = Math.floor(amenities.filter(object => object.type === "bench").reduce((sum, object) => sum + Number(object.usage || 0), 0));
   ui.toiletUses.textContent = Math.floor(amenities.filter(object => object.type === "toilet").reduce((sum, object) => sum + Number(object.usage || 0), 0));
@@ -3258,6 +3512,7 @@ function adjustStaff(role, delta) {
     toast(`${labels[role]}を1人減らしました`);
   }
   state.staff[role] = next;
+  syncStaffAgents();
   computeStats();
 }
 
@@ -3522,6 +3777,7 @@ function loop(now) {
 restoreProgressionState(null);
 renderGuestLog();
 updateUndoButton();
+syncStaffAgents();
 computeStats();
 window.parkDebug = {
   state,
@@ -3552,6 +3808,9 @@ window.parkDebug = {
         : 100),
       cleaners: state.staff.cleaners,
       mechanics: state.staff.mechanics,
+      staffAgents: state.staffAgents.length,
+      cleaningJobs: state.staffStats.cleaningJobs,
+      repairJobs: state.staffStats.repairJobs,
       operatingCost: operatingCost(),
       admissionFee: state.admissionFee,
       sentiment: Number(state.sentiment.toFixed(1)),
@@ -3601,8 +3860,11 @@ window.parkDebug = {
   adjustSelectedPrice,
   restockSelectedKiosk,
   inspect,
+  drawWorld,
   update,
   operatingCostBreakdown,
+  adjustStaff,
+  syncStaffAgents,
   undoLastBuild,
   removeRange,
   spawnGuestAt,
