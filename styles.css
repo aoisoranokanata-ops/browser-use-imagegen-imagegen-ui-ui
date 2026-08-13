@@ -639,6 +639,31 @@ h1 { margin: 0; font-size: 21px; }
 .shop-development-actions button { min-height: 34px; padding: 0 6px; font-size: 9px; }
 .shop-development-actions button.active { background: var(--green); color: white; }
 
+.ride-management-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.ride-management-grid span {
+  padding: 6px 4px;
+  background: rgba(38, 49, 63, .05);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 8px;
+  text-align: center;
+}
+
+.ride-management-grid b { display: block; margin-top: 2px; color: var(--ink); font-size: 10px; }
+.ride-policy-label { display: block; margin-top: 8px; color: var(--muted); font-size: 9px; font-weight: 900; }
+.ride-policy-control { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin-top: 4px; }
+.ride-policy-control button { min-height: 32px; padding: 0 4px; font-size: 9px; }
+.ride-policy-control button.active { background: var(--teal); color: white; }
+.ride-development-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 7px; }
+.ride-development-actions button { min-height: 36px; padding: 0 6px; font-size: 9px; }
+.ride-development-actions button.active { background: var(--green); color: white; }
+
 .shop-insight {
   margin: 7px 0 0;
   padding: 6px 7px;
@@ -757,6 +782,27 @@ h1 { margin: 0; font-size: 21px; }
 }
 
 .maintenance-status b { color: var(--ink); }
+
+.ride-operations-status {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.ride-operations-status span {
+  min-width: 0;
+  padding: 6px 3px;
+  background: rgba(49, 143, 132, .08);
+  border: 1px solid rgba(49, 143, 132, .12);
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 9px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.ride-operations-status b { display: block; margin-top: 2px; color: var(--ink); font-size: 10px; }
 
 .staff-activity {
   display: grid;

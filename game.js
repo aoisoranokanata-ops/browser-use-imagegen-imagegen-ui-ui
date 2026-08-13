@@ -29,6 +29,9 @@ const ui = {
   runningCost: document.getElementById("runningCost"),
   brokenCount: document.getElementById("brokenCount"),
   conditionAverage: document.getElementById("conditionAverage"),
+  openRideCount: document.getElementById("openRideCount"),
+  averageRidePopularity: document.getElementById("averageRidePopularity"),
+  upgradedRideCount: document.getElementById("upgradedRideCount"),
   activeCleaners: document.getElementById("activeCleaners"),
   activeMechanics: document.getElementById("activeMechanics"),
   staffJobs: document.getElementById("staffJobs"),
@@ -127,6 +130,15 @@ const SHOP_MANAGEMENT_CONFIG = {
   maxStaff: 3,
   hireCost: 180,
   startingReputation: 65
+};
+const RIDE_MANAGEMENT_CONFIG = {
+  maxLevel: 3,
+  startingPopularity: 55,
+  policies: {
+    economy: { label: "節約", upkeep: .72, wear: 1.3, failure: 1.35, threshold: 62 },
+    balanced: { label: "標準", upkeep: 1, wear: 1, failure: 1, threshold: 82 },
+    preventive: { label: "予防", upkeep: 1.38, wear: .68, failure: .5, threshold: 92 }
+  }
 };
 const GUEST_ARCHETYPES = {
   family: { label: "子ども連れ", rideBias: { carousel: 12, teacups: 9, wheel: 4, coaster: -8 }, hungerRate: 1.15, thirstRate: 1.05, souvenirBias: 1.25, fatigueRate: 1.05 },
@@ -338,17 +350,67 @@ function tileAt(x, y) {
 
 function placeStarterRide(x, y, type) {
   const tile = tileAt(x, y);
-  tile.object = {
+  tile.object = createRide(type);
+  state.rides.push(tile.object);
+}
+
+function createRide(type, saved = null) {
+  if (!tools[type]?.ride) return null;
+  return {
     type,
     queue: [],
     riders: [],
-    timer: 0,
-    totalRides: 0,
-    condition: 100,
-    broken: false,
-    price: tools[type].defaultPrice
+    timer: Math.max(0, Number(saved?.timer || 0)),
+    totalRides: Math.max(0, Number(saved?.totalRides || 0)),
+    condition: clamp(Number(saved?.condition ?? 100), 0, 100),
+    broken: !!saved?.broken,
+    price: clamp(Number(saved?.price ?? tools[type].defaultPrice), 0, 30),
+    open: saved?.open === undefined ? true : !!saved.open,
+    level: clamp(Math.round(Number(saved?.level ?? 1)), 1, RIDE_MANAGEMENT_CONFIG.maxLevel),
+    popularity: clamp(Number(saved?.popularity ?? RIDE_MANAGEMENT_CONFIG.startingPopularity), 0, 100),
+    maintenancePolicy: RIDE_MANAGEMENT_CONFIG.policies[saved?.maintenancePolicy] ? saved.maintenancePolicy : "balanced"
   };
-  state.rides.push(tile.object);
+}
+
+function ridePolicy(ride) {
+  return RIDE_MANAGEMENT_CONFIG.policies[ride?.maintenancePolicy] || RIDE_MANAGEMENT_CONFIG.policies.balanced;
+}
+
+function rideCapacity(ride) {
+  return Math.max(1, Number(tools[ride.type]?.cap || 1) + (Number(ride.level || 1) - 1) * 2);
+}
+
+function rideDuration(ride) {
+  return Math.max(3, Number(tools[ride.type]?.duration || 8) * Math.pow(.9, Number(ride.level || 1) - 1));
+}
+
+function rideEffectiveAppeal(ride) {
+  return Number(tools[ride.type]?.appeal || 0) + (Number(ride.level || 1) - 1) * 5 + (Number(ride.popularity || 0) - 50) * .12;
+}
+
+function rideMaintenanceThreshold(ride) {
+  return ridePolicy(ride).threshold;
+}
+
+function rideRepairTarget(ride) {
+  return Math.min(98, rideMaintenanceThreshold(ride) + 8);
+}
+
+function rideMaintenanceCost(ride) {
+  const openFactor = ride.open === false ? .25 : 1;
+  const levelFactor = 1 + (Number(ride.level || 1) - 1) * .16;
+  return Number(tools[ride.type]?.upkeep || 0) * ridePolicy(ride).upkeep * levelFactor * openFactor;
+}
+
+function rideUpgradeCost(ride) {
+  const level = clamp(Math.round(Number(ride?.level || 1)), 1, RIDE_MANAGEMENT_CONFIG.maxLevel);
+  if (level >= RIDE_MANAGEMENT_CONFIG.maxLevel) return 0;
+  return Math.round(Number(tools[ride.type]?.cost || 1000) * (level === 1 ? .55 : .85));
+}
+
+function rideEstimatedWait(ride) {
+  const groups = Math.ceil(Number(ride.queue?.length || 0) / rideCapacity(ride));
+  return Math.max(0, Math.ceil((ride.riders?.length ? Number(ride.timer || 0) : 0) + groups * rideDuration(ride)));
 }
 
 function placeStarterObject(x, y, type) {
@@ -943,7 +1005,8 @@ function drawRide(type, p, ride) {
     }
     drawFlag(0, -4 * z, "#f1b84f", 1);
   }
-  if (ride.broken) drawRideStatusBadge("故障", -31 * z, -64 * z, "#d84f4f");
+  if (ride.open === false) drawRideStatusBadge("休止", -31 * z, -64 * z, "#596574");
+  else if (ride.broken) drawRideStatusBadge("故障", -31 * z, -64 * z, "#d84f4f");
   if (ride.queue.length) drawQueueBadge(ride.queue.length, -30 * z, -42 * z);
   ctx.restore();
 }
@@ -1630,14 +1693,14 @@ function findStaffTask(agent) {
   } else {
     for (const tile of state.tiles) {
       const ride = tile.object;
-      if (!tools[ride?.type]?.ride || (!ride.broken && Number(ride.condition ?? 100) >= 82)) continue;
+      if (!tools[ride?.type]?.ride || (!ride.broken && Number(ride.condition ?? 100) >= rideMaintenanceThreshold(ride))) continue;
       candidates.push({
         key: `ride:${key(tile)}`,
         kind: "ride",
         tile,
         object: ride,
         workTile: nearestPathForTile(tile),
-        urgency: ride.broken ? 1000 : 100 - Number(ride.condition ?? 100)
+        urgency: ride.broken ? 1000 : (100 - Number(ride.condition ?? 100)) * (ride.maintenancePolicy === "preventive" ? 1.25 : 1)
       });
     }
   }
@@ -1658,7 +1721,7 @@ function staffTaskIsValid(target) {
   if (target.kind === "litter") return target.tile.litter > .05;
   if (target.kind === "bin") return target.tile.object === target.object && Number(target.object.fill || 0) > .05;
   if (target.kind === "ride") {
-    return target.tile.object === target.object && (target.object.broken || Number(target.object.condition ?? 100) < 92);
+    return target.tile.object === target.object && (target.object.broken || Number(target.object.condition ?? 100) < rideRepairTarget(target.object));
   }
   return false;
 }
@@ -1887,7 +1950,7 @@ function update(dt) {
 }
 
 function operatingCostBreakdown() {
-  const rideMaintenance = state.rides.reduce((sum, ride) => sum + (tools[ride.type].upkeep || 0), 0);
+  const rideMaintenance = state.rides.reduce((sum, ride) => sum + rideMaintenanceCost(ride), 0);
   const amenityMaintenance = state.tiles.reduce((sum, tile) => {
     const tool = tools[tile.object?.type];
     return sum + (tool?.amenity ? Number(tool.upkeep || 0) : 0);
@@ -2158,14 +2221,14 @@ function chooseRide(guest = null) {
   const reachable = state.rides.filter(ride => {
     const pathTile = nearestPath(ride);
     const price = Number(ride.price ?? tools[ride.type].defaultPrice);
-    return !ride.broken && price <= Number(guest?.budget ?? Infinity)
+    return ride.open !== false && !ride.broken && price <= Number(guest?.budget ?? Infinity)
       && pathTile && (pathTile === origin || findPath(origin, pathTile).length);
   });
   if (!reachable.length) return null;
   const sorted = reachable.sort((a, b) => {
     const sensitivity = guest?.priceSensitivity || 1;
     const profile = guest?.profile || { rideBias: {} };
-    const score = ride => tools[ride.type].appeal
+    const score = ride => rideEffectiveAppeal(ride)
       + Number(profile.rideBias?.[ride.type] || 0)
       + (guest?.archetype === "scenic" ? localSceneryScore(ride) * 1.2 : 0)
       - ride.queue.length * (guest?.archetype === "family" ? 5.5 : 4)
@@ -2453,8 +2516,8 @@ function updateGuest(g, dt) {
     } else if (["bench", "toilet"].includes(g.goalType) && g.goal) {
       beginAmenityUse(g);
     } else if (g.goal) {
-      if (g.goal.broken) {
-        guestThought(g, "目当てのライドが故障している", "故障している", "negative", true);
+      if (g.goal.broken || g.goal.open === false) {
+        guestThought(g, g.goal.broken ? "目当てのライドが故障している" : "目当てのライドが運休している", g.goal.broken ? "故障している" : "運休している", g.goal.broken ? "negative" : "neutral", true);
         routeGuestToRideOrExit(g);
         return;
       }
@@ -2574,13 +2637,16 @@ function updateRide(ride, dt) {
   ride.condition = clamp(Number(ride.condition ?? 100), 0, 100);
   ride.broken = !!ride.broken;
   if (ride.broken) return;
+  if (ride.open === false && !ride.riders.length) return;
+  const policy = ridePolicy(ride);
   const debtPenalty = state.money < 0 ? 1.8 : 1;
-  const wear = (.04 + (tools[ride.type].upkeep || 10) * .0015) * debtPenalty;
+  const wear = (.04 + (tools[ride.type].upkeep || 10) * .0015) * debtPenalty * policy.wear;
   const underMaintenance = state.staffAgents.some(agent => agent.role === "mechanic" && agent.target?.object === ride);
   ride.condition = clamp(ride.condition - dt * wear / (underMaintenance ? 1.8 : 1), 0, 100);
-  const failureRisk = ride.condition < 45 ? (45 - ride.condition) * .00075 : 0;
+  const failureRisk = ride.condition < 45 ? (45 - ride.condition) * .00075 * policy.failure : 0;
   if (ride.condition <= 10 || Math.random() < dt * failureRisk) {
     ride.broken = true;
+    ride.popularity = clamp(Number(ride.popularity ?? RIDE_MANAGEMENT_CONFIG.startingPopularity) - 5, 0, 100);
     const rideTile = state.tiles.find(t => t.object === ride);
     for (const guest of ride.riders) {
       guest.state = "leaving";
@@ -2607,8 +2673,8 @@ function updateRide(ride, dt) {
       guest.patience = 30;
       dropLitter(guest.tile, Math.random() * .55);
       state.guestsServed++;
-      const fairPrice = tools[ride.type].defaultPrice;
-      const value = clamp(1.5 - Math.max(0, ride.price - fairPrice) * .16, -.8, 1.5);
+      const fairPrice = tools[ride.type].defaultPrice + (Number(ride.level || 1) - 1) * 2;
+      const value = clamp(1.5 + (Number(ride.level || 1) - 1) * .18 - Math.max(0, ride.price - fairPrice) * .16, -.8, 1.85);
       state.sentiment = clamp(
         state.sentiment + value,
         -20,
@@ -2616,6 +2682,7 @@ function updateRide(ride, dt) {
       );
       const preference = Number(guest.profile?.rideBias?.[ride.type] || 0);
       guest.satisfaction = clamp(guest.satisfaction + value * 4 + preference * .25, 0, 100);
+      ride.popularity = clamp(Number(ride.popularity ?? RIDE_MANAGEMENT_CONFIG.startingPopularity) + (value >= 0 ? .35 : -.55), 0, 100);
       guest.souvenirDesire = clamp(Number(guest.souvenirDesire || 0) + 18 * Number(guest.profile?.souvenirBias || 1), 0, 100);
       if (value < 0) guestThought(guest, "楽しかったけれど乗車料金が高い", "料金が高い", "negative", true);
       else if (guest.archetype === "thrill" && ride.type === "coaster") guestThought(guest, "このコースターは最高にスリル満点", "最高の絶叫", "positive", true);
@@ -2639,8 +2706,8 @@ function updateRide(ride, dt) {
     ride.totalRides++;
     ride.condition = clamp(ride.condition - .7 - tools[ride.type].upkeep * .018, 0, 100);
   }
-  if (!ride.riders.length && ride.queue.length) {
-    const cap = tools[ride.type].cap;
+  if (ride.open !== false && !ride.riders.length && ride.queue.length) {
+    const cap = rideCapacity(ride);
     ride.riders = ride.queue.splice(0, cap);
     const rideTile = state.tiles.find(t => t.object === ride);
     for (const guest of ride.riders) {
@@ -2652,7 +2719,7 @@ function updateRide(ride, dt) {
       state.money += price;
       state.finance.rideRevenue += price;
     }
-    ride.timer = tools[ride.type].duration;
+    ride.timer = rideDuration(ride);
   }
 }
 
@@ -2841,6 +2908,10 @@ function snapshotObject(object) {
     saved.condition = Number(object.condition ?? 100);
     saved.broken = !!object.broken;
     saved.price = Number(object.price ?? tools[object.type].defaultPrice);
+    saved.open = object.open !== false;
+    saved.level = clamp(Math.round(Number(object.level || 1)), 1, RIDE_MANAGEMENT_CONFIG.maxLevel);
+    saved.popularity = clamp(Number(object.popularity ?? RIDE_MANAGEMENT_CONFIG.startingPopularity), 0, 100);
+    saved.maintenancePolicy = RIDE_MANAGEMENT_CONFIG.policies[object.maintenancePolicy] ? object.maintenancePolicy : "balanced";
   } else if (tools[object.type]?.shop) {
     saved.stock = Number(object.stock ?? shopCapacityForDifficulty(state.difficulty, object.type));
     saved.maxStock = Number(object.maxStock ?? shopCapacityForDifficulty(state.difficulty, object.type));
@@ -2875,16 +2946,7 @@ function restoreObject(saved) {
   if (!saved || !tools[saved.type]) return null;
   if (tools[saved.type].transit) return createTransitStop(saved.transitMode || "bus", saved);
   if (tools[saved.type].ride) {
-    return {
-      type: saved.type,
-      queue: [],
-      riders: [],
-      timer: saved.timer || 0,
-      totalRides: saved.totalRides || 0,
-      condition: clamp(Number(saved.condition ?? 100), 0, 100),
-      broken: !!saved.broken,
-      price: clamp(Number(saved.price ?? tools[saved.type].defaultPrice), 0, 30)
-    };
+    return createRide(saved.type, saved);
   }
   if (tools[saved.type].shop) {
     return createShop(saved.type, saved);
@@ -3312,6 +3374,14 @@ function computeStats() {
   ui.financeHint.classList.toggle("warning", financeWarning);
   ui.brokenCount.textContent = broken;
   ui.conditionAverage.textContent = `${Math.round(averageCondition)}%`;
+  const openRides = state.rides.filter(ride => ride.open !== false).length;
+  const averageRidePopularity = rides
+    ? state.rides.reduce((sum, ride) => sum + Number(ride.popularity ?? RIDE_MANAGEMENT_CONFIG.startingPopularity), 0) / rides
+    : 0;
+  const upgradedRides = state.rides.filter(ride => Number(ride.level || 1) > 1).length;
+  ui.openRideCount.textContent = `${openRides} / ${rides}`;
+  ui.averageRidePopularity.textContent = rides ? Math.round(averageRidePopularity) : "--";
+  ui.upgradedRideCount.textContent = upgradedRides;
   ui.activeCleaners.textContent = state.staffAgents.filter(agent => agent.role === "cleaner" && agent.state === "cleaning").length;
   ui.activeMechanics.textContent = state.staffAgents.filter(agent => agent.role === "mechanic" && agent.state === "repairing").length;
   ui.staffJobs.textContent = Math.floor(state.staffStats.cleaningJobs + state.staffStats.repairJobs);
@@ -3625,16 +3695,7 @@ function build(tile, options = {}) {
   } else if (selectedTool === "water") {
     tile.terrain = "water";
   } else if (tool.ride) {
-    tile.object = {
-      type: selectedTool,
-      queue: [],
-      riders: [],
-      timer: 0,
-      totalRides: 0,
-      condition: 100,
-      broken: false,
-      price: tool.defaultPrice
-    };
+    tile.object = createRide(selectedTool);
     state.rides.push(tile.object);
   } else if (tool.shop) {
     tile.object = createShop(selectedTool);
@@ -3697,8 +3758,17 @@ function inspect(tile) {
     const t = tools[tile.object.type];
     title = t.label;
     if (t.ride) {
-      body = `${tile.object.broken ? "故障中。" : "稼働中。"}状態 ${Math.round(tile.object.condition ?? 100)}%、待ち列 ${tile.object.queue.length}人、乗車中 ${tile.object.riders.length}/${t.cap}人、運転回数 ${tile.object.totalRides}回。`;
-      controls = `<div class="inline-economy"><span>乗車料金</span><div class="stepper"><button data-action="ride-price-down" title="乗車料金を下げる">−</button><b>$${tile.object.price}</b><button data-action="ride-price-up" title="乗車料金を上げる">＋</button></div></div>`;
+      const capacity = rideCapacity(tile.object);
+      const duration = rideDuration(tile.object);
+      const wait = rideEstimatedWait(tile.object);
+      const upkeep = Math.round(rideMaintenanceCost(tile.object) * difficultyCostFactor());
+      const level = Number(tile.object.level || 1);
+      const popularity = Math.round(Number(tile.object.popularity ?? RIDE_MANAGEMENT_CONFIG.startingPopularity));
+      const upgradeCost = rideUpgradeCost(tile.object);
+      const status = tile.object.broken ? "故障中" : tile.object.open === false ? "運休中" : "営業中";
+      const waitLabel = tile.object.broken || tile.object.open === false ? "--" : `${wait}秒`;
+      body = `${status}。状態 ${Math.round(tile.object.condition ?? 100)}%、待ち列 ${tile.object.queue.length}人・推定${waitLabel}、乗車中 ${tile.object.riders.length}/${capacity}人、運転回数 ${tile.object.totalRides}回。`;
+      controls = `<div class="ride-management-grid"><span>レベル<b>Lv.${level}</b></span><span>人気<b>${popularity}</b></span><span>維持費 / 精算<b>$${upkeep}</b></span><span>定員<b>${capacity}人</b></span><span>運転時間<b>${duration.toFixed(1)}秒</b></span><span>整備開始<b>${rideMaintenanceThreshold(tile.object)}%</b></span></div><div class="inline-economy"><span>乗車料金</span><div class="stepper"><button data-action="ride-price-down" title="乗車料金を下げる">−</button><b>$${tile.object.price}</b><button data-action="ride-price-up" title="乗車料金を上げる">＋</button></div></div><span class="ride-policy-label">整備方針</span><div class="ride-policy-control">${Object.entries(RIDE_MANAGEMENT_CONFIG.policies).map(([key, policy]) => `<button class="${tile.object.maintenancePolicy === key ? "active" : ""}" data-action="ride-policy" data-policy="${key}">${policy.label}</button>`).join("")}</div><div class="ride-development-actions"><button class="${tile.object.open !== false ? "active" : ""}" data-action="ride-open-toggle">${tile.object.open === false ? "営業を再開" : "運休する"}</button><button data-action="ride-upgrade" ${upgradeCost <= 0 || tile.object.broken ? "disabled" : ""}>${upgradeCost > 0 ? `Lv.${level + 1}改良 $${upgradeCost}` : "改良完了"}</button></div>`;
     }
     else if (t.transit) {
       const stop = tile.object;
@@ -4073,6 +4143,63 @@ function adjustSelectedPrice(delta) {
   toast(`${tool.ride ? "乗車" : "商品"}料金を $${object.price} に設定しました`);
 }
 
+function toggleSelectedRideOpen() {
+  const ride = selectedTile?.object;
+  if (!tools[ride?.type]?.ride) return false;
+  ride.open = ride.open === false;
+  if (!ride.open) {
+    const waiting = [...ride.queue];
+    ride.queue = [];
+    for (const guest of waiting) {
+      guest.goal = null;
+      guest.goalType = null;
+      guest.state = "walking";
+      routeGuestToRideOrExit(guest);
+      guestThought(guest, `${tools[ride.type].label}が運休したので別の遊具へ`, "別の遊具へ", "neutral", true);
+    }
+  }
+  inspect(selectedTile);
+  computeStats();
+  toast(ride.open ? "ライドの営業を再開しました" : "ライドを運休しました。維持費が軽減されます");
+  return true;
+}
+
+function setSelectedRidePolicy(policyName) {
+  const ride = selectedTile?.object;
+  if (!tools[ride?.type]?.ride || !RIDE_MANAGEMENT_CONFIG.policies[policyName]) return false;
+  ride.maintenancePolicy = policyName;
+  inspect(selectedTile);
+  computeStats();
+  toast(`整備方針を「${RIDE_MANAGEMENT_CONFIG.policies[policyName].label}」に変更しました`);
+  return true;
+}
+
+function upgradeSelectedRide() {
+  const ride = selectedTile?.object;
+  if (!tools[ride?.type]?.ride) return false;
+  if (ride.broken) {
+    toast("故障を修理してから改良してください");
+    return false;
+  }
+  const cost = rideUpgradeCost(ride);
+  if (!cost) {
+    toast("このライドは最大レベルです");
+    return false;
+  }
+  if (state.money < cost) {
+    toast("ライド改良の資金が足りません");
+    return false;
+  }
+  state.money -= cost;
+  ride.level = clamp(Number(ride.level || 1) + 1, 1, RIDE_MANAGEMENT_CONFIG.maxLevel);
+  ride.popularity = clamp(Number(ride.popularity ?? RIDE_MANAGEMENT_CONFIG.startingPopularity) + 6, 0, 100);
+  ride.condition = clamp(Number(ride.condition ?? 100) + 12, 0, 100);
+  inspect(selectedTile);
+  computeStats();
+  toast(`${tools[ride.type].label}をLv.${ride.level}へ改良しました`);
+  return true;
+}
+
 function restockSelectedKiosk() {
   const shop = selectedTile?.object;
   if (!tools[shop?.type]?.shop) return;
@@ -4392,6 +4519,9 @@ ui.selected.addEventListener("click", event => {
   if (action === "shop-staff-down") adjustSelectedShopStaff(-1);
   if (action === "shop-staff-up") adjustSelectedShopStaff(1);
   if (action === "shop-upgrade") upgradeSelectedShop();
+  if (action === "ride-open-toggle") toggleSelectedRideOpen();
+  if (action === "ride-policy") setSelectedRidePolicy(event.target.closest("[data-policy]")?.dataset.policy);
+  if (action === "ride-upgrade") upgradeSelectedRide();
   if (action === "route-toggle") toggleStopInRoute();
   if (action === "route-up") moveStopInRoute(selectedTile, -1);
   if (action === "route-down") moveStopInRoute(selectedTile, 1);
@@ -4450,6 +4580,9 @@ window.parkDebug = {
       averageCondition: Math.round(state.rides.length
         ? state.rides.reduce((sum, ride) => sum + Number(ride.condition ?? 100), 0) / state.rides.length
         : 100),
+      openRides: state.rides.filter(ride => ride.open !== false).length,
+      averageRidePopularity: Math.round(state.rides.length ? state.rides.reduce((sum, ride) => sum + Number(ride.popularity ?? RIDE_MANAGEMENT_CONFIG.startingPopularity), 0) / state.rides.length : 0),
+      upgradedRides: state.rides.filter(ride => Number(ride.level || 1) > 1).length,
       cleaners: state.staff.cleaners,
       mechanics: state.staff.mechanics,
       staffAgents: state.staffAgents.length,
@@ -4516,6 +4649,19 @@ window.parkDebug = {
   settleRound,
   closeRoundReport,
   adjustSelectedPrice,
+  toggleSelectedRideOpen,
+  setSelectedRidePolicy,
+  upgradeSelectedRide,
+  createRide,
+  ridePolicy,
+  rideCapacity,
+  rideDuration,
+  rideEffectiveAppeal,
+  rideMaintenanceThreshold,
+  rideRepairTarget,
+  rideMaintenanceCost,
+  rideUpgradeCost,
+  rideEstimatedWait,
   restockSelectedKiosk,
   toggleSelectedShopAutoRestock,
   orderSelectedShop,
