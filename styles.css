@@ -775,6 +775,27 @@ h1 { margin: 0; font-size: 21px; }
 
 .stepper > b { font-size: 13px; }
 
+.staff-development {
+  display: grid;
+  gap: 5px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(45, 59, 70, .09);
+}
+
+.staff-training-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 84px;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+}
+
+.staff-training-row > span { min-width: 0; font-size: 10px; font-weight: 900; }
+.staff-training-row small { display: block; margin-top: 2px; color: var(--muted); font-size: 9px; font-weight: 700; }
+.staff-training-row small b { color: var(--ink); }
+.staff-training-row button { min-height: 30px; padding: 0 6px; font-size: 9px; }
+.staff-training-row i { display: inline-block; width: 6px; height: 6px; margin-right: 4px; border-radius: 50%; }
+
 .maintenance-status {
   padding-top: 8px;
   color: var(--muted);
@@ -806,7 +827,7 @@ h1 { margin: 0; font-size: 21px; }
 
 .staff-activity {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 5px;
   margin-top: 8px;
 }

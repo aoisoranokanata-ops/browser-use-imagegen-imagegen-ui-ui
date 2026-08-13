@@ -554,8 +554,39 @@ assert.ok(state.staffStats.repairJobs > repairJobsBefore, "a mechanic should com
 const staffAgentsBeforeHire = state.staffAgents.length;
 debug.adjustStaff("cleaners", 1);
 assert.equal(state.staffAgents.length, staffAgentsBeforeHire + 1, "hiring should add a staff character immediately");
-debug.adjustStaff("cleaners", -1);
-assert.equal(state.staffAgents.length, staffAgentsBeforeHire);
+const trainee = state.staffAgents.filter(agent => agent.role === "cleaner").sort((a, b) => b.id - a.id)[0];
+assert.equal(trainee.level, 1);
+assert.equal(debug.staffTrainingCost("cleaner"), 320);
+const traineeEfficiencyBefore = debug.staffEfficiency(trainee);
+const parkStaffCostBeforeTraining = debug.operatingCostBreakdown().parkStaff;
+const trainingMoneyBefore = state.money;
+const trainingExpensesBefore = state.finance.staffExpenses;
+assert.equal(debug.trainStaff("cleaner"), true);
+assert.equal(trainee.level, 2);
+assert.ok(debug.staffEfficiency(trainee) > traineeEfficiencyBefore);
+assert.ok(debug.operatingCostBreakdown().parkStaff > parkStaffCostBeforeTraining, "trained staff should earn a higher wage");
+assert.equal(trainingMoneyBefore - state.money, 320);
+assert.equal(state.finance.staffExpenses - trainingExpensesBefore, 320);
+assert.equal(debug.staffTrainingCost("cleaner"), 320, "the next level-one employee should train next");
+
+const restingMechanic = state.staffAgents.find(agent => agent.role === "mechanic");
+restingMechanic.fatigue = 91.9;
+restingMechanic.state = "patrolling";
+restingMechanic.path = [state.tiles.find(tile => tile.path && tile !== restingMechanic.tile)];
+debug.update(.2);
+assert.equal(restingMechanic.state, "resting", "tired staff should take a break automatically");
+const fatigueAtRest = restingMechanic.fatigue;
+debug.update(.5);
+assert.ok(restingMechanic.fatigue < fatigueAtRest, "resting should recover fatigue");
+restingMechanic.fatigue = 32.1;
+debug.update(.1);
+assert.notEqual(restingMechanic.state, "resting", "recovered staff should return to work");
+
+trainee.fatigue = 44;
+const savedTraineeId = trainee.id;
+restingMechanic.fatigue = 60;
+restingMechanic.state = "resting";
+const savedRestingMechanicId = restingMechanic.id;
 
 const savedAmenityStats = {
   benchUses: benchTile.object.usage,
@@ -573,6 +604,15 @@ assert.equal(state.tiles.find(tile => tile.x === 9 && tile.y === 15).object.usag
 assert.equal(state.tiles.find(tile => tile.x === 7 && tile.y === 11).object.collected, savedAmenityStats.binCollected);
 assert.ok(state.staffStats.cleaningJobs < 999, "staff job totals should survive save/load");
 assert.equal(state.staffAgents.length, state.staff.cleaners + state.staff.mechanics);
+const loadedTrainee = state.staffAgents.find(agent => agent.id === savedTraineeId);
+assert.equal(loadedTrainee.level, 2, "staff training should survive save/load");
+assert.equal(loadedTrainee.fatigue, 44, "staff fatigue should survive save/load");
+const loadedRestingMechanic = state.staffAgents.find(agent => agent.id === savedRestingMechanicId);
+assert.equal(loadedRestingMechanic.state, "resting", "staff should resume an unfinished break after loading");
+loadedRestingMechanic.fatigue = 0;
+loadedRestingMechanic.state = "idle";
+debug.adjustStaff("cleaners", -1);
+assert.equal(state.staffAgents.length, staffAgentsBeforeHire);
 
 const noStaffLitterTile = state.tiles.find(tile => tile.x === 8 && tile.y === 10);
 const noStaffRide = state.rides[0];
@@ -767,6 +807,7 @@ assert.deepEqual(state.progression.activeGoalIds, []);
 const modernSave = storage.get("yumeshimaParkSaveV1");
 const legacySave = JSON.parse(modernSave);
 delete legacySave.progression;
+delete legacySave.staffRoster;
 const legacyKiosk = legacySave.tiles.find(tile => tile.object?.type === "kiosk").object;
 const legacyRide = legacySave.tiles.find(tile => tile.object?.type === "carousel").object;
 legacyKiosk.stock = 30;
@@ -810,6 +851,7 @@ assert.equal(migratedRide.open, true);
 assert.equal(migratedRide.level, 1);
 assert.equal(migratedRide.popularity, 55);
 assert.equal(migratedRide.maintenancePolicy, "balanced");
+assert.ok(state.staffAgents.every(agent => agent.level === 1 && agent.fatigue === 0), "legacy staff should receive safe defaults");
 storage.set("yumeshimaParkSaveV1", modernSave);
 debug.loadGame();
 assert.equal(state.progression.bestStars, 5);

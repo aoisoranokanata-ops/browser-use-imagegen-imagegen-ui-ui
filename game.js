@@ -26,6 +26,12 @@ const ui = {
   mechanicMinus: document.getElementById("mechanicMinus"),
   mechanicPlus: document.getElementById("mechanicPlus"),
   mechanicCount: document.getElementById("mechanicCount"),
+  cleanerLevel: document.getElementById("cleanerLevel"),
+  cleanerFatigue: document.getElementById("cleanerFatigue"),
+  cleanerTraining: document.getElementById("cleanerTraining"),
+  mechanicLevel: document.getElementById("mechanicLevel"),
+  mechanicFatigue: document.getElementById("mechanicFatigue"),
+  mechanicTraining: document.getElementById("mechanicTraining"),
   runningCost: document.getElementById("runningCost"),
   brokenCount: document.getElementById("brokenCount"),
   conditionAverage: document.getElementById("conditionAverage"),
@@ -34,6 +40,7 @@ const ui = {
   upgradedRideCount: document.getElementById("upgradedRideCount"),
   activeCleaners: document.getElementById("activeCleaners"),
   activeMechanics: document.getElementById("activeMechanics"),
+  restingStaff: document.getElementById("restingStaff"),
   staffJobs: document.getElementById("staffJobs"),
   benchUses: document.getElementById("benchUses"),
   toiletUses: document.getElementById("toiletUses"),
@@ -139,6 +146,14 @@ const RIDE_MANAGEMENT_CONFIG = {
     balanced: { label: "標準", upkeep: 1, wear: 1, failure: 1, threshold: 82 },
     preventive: { label: "予防", upkeep: 1.38, wear: .68, failure: .5, threshold: 92 }
   }
+};
+const STAFF_MANAGEMENT_CONFIG = {
+  maxLevel: 3,
+  experienceThresholds: [0, 6, 16],
+  restAt: 92,
+  resumeAt: 32,
+  trainingCosts: { cleaner: 320, mechanic: 440 },
+  wages: { cleaner: 35, mechanic: 45 }
 };
 const GUEST_ARCHETYPES = {
   family: { label: "子ども連れ", rideBias: { carousel: 12, teacups: 9, wheel: 4, coaster: -8 }, hungerRate: 1.15, thirstRate: 1.05, souvenirBias: 1.25, fatigueRate: 1.05 },
@@ -1404,6 +1419,7 @@ function drawStaffMember(x, y, agent) {
     ctx.stroke();
   }
   if (working) drawRideStatusBadge(cleaner ? "清掃" : "整備", -17 * z, -41 * z, cleaner ? "#1b7e97" : "#b47a16");
+  if (agent.state === "resting") drawRideStatusBadge("休憩", -17 * z, -41 * z, "#64727c");
   ctx.restore();
 }
 
@@ -1630,19 +1646,83 @@ function roundRect(x, y, w, h, r) {
   ctx.quadraticCurveTo(x, y, x + r, y);
 }
 
-function createStaffAgent(role) {
+function staffLevelForExperience(experience) {
+  const xp = Math.max(0, Number(experience || 0));
+  if (xp >= STAFF_MANAGEMENT_CONFIG.experienceThresholds[2]) return 3;
+  if (xp >= STAFF_MANAGEMENT_CONFIG.experienceThresholds[1]) return 2;
+  return 1;
+}
+
+function createStaffAgent(role, saved = {}) {
+  const savedId = Math.max(0, Math.floor(Number(saved.id || 0)));
+  const id = savedId > staffSequence ? savedId : staffSequence + 1;
+  staffSequence = Math.max(staffSequence, id);
+  const experience = Math.max(0, Number(saved.experience ?? saved.jobsCompleted ?? 0));
+  const level = clamp(Math.max(Math.round(Number(saved.level || 1)), staffLevelForExperience(experience)), 1, STAFF_MANAGEMENT_CONFIG.maxLevel);
+  const fatigue = clamp(Number(saved.fatigue || 0), 0, 100);
   return {
-    id: ++staffSequence,
+    id,
     role,
     tile: entrance,
     pos: { x: entrance.x, y: entrance.y },
     path: [],
     target: null,
-    state: "idle",
+    state: (saved.resting && fatigue > STAFF_MANAGEMENT_CONFIG.resumeAt) || fatigue >= STAFF_MANAGEMENT_CONFIG.restAt ? "resting" : "idle",
     speed: role === "cleaner" ? 1.08 : 1.02,
-    patrolStep: staffSequence * 3,
-    jobsCompleted: 0
+    patrolStep: id * 3,
+    jobsCompleted: Math.max(0, Number(saved.jobsCompleted || 0)),
+    experience,
+    level,
+    fatigue
   };
+}
+
+function staffEfficiency(agent) {
+  const levelBoost = 1 + (clamp(Number(agent?.level || 1), 1, STAFF_MANAGEMENT_CONFIG.maxLevel) - 1) * .2;
+  const fatigueFactor = Math.max(.55, 1 - clamp(Number(agent?.fatigue || 0), 0, 100) * .0045);
+  return levelBoost * fatigueFactor;
+}
+
+function staffWage(agent) {
+  const base = STAFF_MANAGEMENT_CONFIG.wages[agent?.role] || 0;
+  return base * (1 + (clamp(Number(agent?.level || 1), 1, STAFF_MANAGEMENT_CONFIG.maxLevel) - 1) * .18);
+}
+
+function staffTeam(role) {
+  return state.staffAgents.filter(agent => agent.role === role);
+}
+
+function staffTeamStats(role) {
+  const team = staffTeam(role);
+  return {
+    count: team.length,
+    averageLevel: team.length ? team.reduce((sum, agent) => sum + Number(agent.level || 1), 0) / team.length : 0,
+    averageFatigue: team.length ? team.reduce((sum, agent) => sum + Number(agent.fatigue || 0), 0) / team.length : 0,
+    resting: team.filter(agent => agent.state === "resting").length
+  };
+}
+
+function staffTrainingCandidate(role) {
+  return staffTeam(role)
+    .filter(agent => Number(agent.level || 1) < STAFF_MANAGEMENT_CONFIG.maxLevel)
+    .sort((a, b) => Number(a.level || 1) - Number(b.level || 1)
+      || Number(a.experience || 0) - Number(b.experience || 0)
+      || Number(a.fatigue || 0) - Number(b.fatigue || 0))[0] || null;
+}
+
+function staffTrainingCost(role) {
+  const candidate = staffTrainingCandidate(role);
+  return candidate ? STAFF_MANAGEMENT_CONFIG.trainingCosts[role] * Number(candidate.level || 1) : 0;
+}
+
+function parkStaffWageTotal() {
+  return ["cleaner", "mechanic"].reduce((sum, role) => {
+    const desired = role === "cleaner" ? state.staff.cleaners : state.staff.mechanics;
+    const team = staffTeam(role).slice(0, desired);
+    const missing = Math.max(0, desired - team.length);
+    return sum + team.reduce((teamSum, agent) => teamSum + staffWage(agent), 0)
+      + missing * STAFF_MANAGEMENT_CONFIG.wages[role];
+  }, 0);
 }
 
 function syncStaffAgents() {
@@ -1745,7 +1825,7 @@ function sendStaffOnPatrol(agent) {
 }
 
 function moveStaffAgent(agent, dt) {
-  let travel = agent.speed * dt;
+  let travel = agent.speed * staffEfficiency(agent) * dt;
   while (agent.path.length && travel > 0) {
     const next = agent.path[0];
     const dx = next.x - agent.pos.x;
@@ -1774,6 +1854,10 @@ function finishStaffTask(agent) {
   if (agent.role === "cleaner") state.staffStats.cleaningJobs++;
   else state.staffStats.repairJobs++;
   agent.jobsCompleted++;
+  agent.experience = Math.max(0, Number(agent.experience || 0)) + 1;
+  const previousLevel = Number(agent.level || 1);
+  agent.level = Math.max(previousLevel, staffLevelForExperience(agent.experience));
+  if (agent.level > previousLevel) toast(`${agent.role === "cleaner" ? "清掃員" : "整備員"}がLv.${agent.level}に成長しました`);
   agent.target = null;
   agent.path = [];
   agent.state = "idle";
@@ -1793,12 +1877,13 @@ function workStaffTask(agent, dt) {
     finishStaffTask(agent);
     return;
   }
+  const work = dt * staffEfficiency(agent);
   if (target.kind === "litter") {
-    target.tile.litter = Math.max(0, target.tile.litter - dt * 2.4);
+    target.tile.litter = Math.max(0, target.tile.litter - work * 2.4);
   } else if (target.kind === "bin") {
-    target.object.fill = Math.max(0, Number(target.object.fill || 0) - dt * 4.5);
+    target.object.fill = Math.max(0, Number(target.object.fill || 0) - work * 4.5);
   } else {
-    target.object.condition = clamp(Number(target.object.condition ?? 100) + dt * 7.5, 0, 100);
+    target.object.condition = clamp(Number(target.object.condition ?? 100) + work * 7.5, 0, 100);
     if (target.object.broken && target.object.condition >= 55) target.object.broken = false;
   }
   if (!staffTaskIsValid(target)) finishStaffTask(agent);
@@ -1813,6 +1898,20 @@ function updateStaffAgents(dt) {
       agent.path = [];
       agent.target = null;
       agent.state = "idle";
+    }
+    if (agent.state === "resting") {
+      agent.fatigue = Math.max(0, Number(agent.fatigue || 0) - dt * 14);
+      if (agent.fatigue <= STAFF_MANAGEMENT_CONFIG.resumeAt) agent.state = "idle";
+      continue;
+    }
+    const working = ["cleaning", "repairing"].includes(agent.state);
+    const moving = agent.path.length > 0;
+    const fatigueRate = working ? 5.5 : moving ? (agent.target ? 1.4 : .65) : -7;
+    agent.fatigue = clamp(Number(agent.fatigue || 0) + dt * fatigueRate, 0, 100);
+    if (agent.fatigue >= STAFF_MANAGEMENT_CONFIG.restAt) {
+      abandonStaffTask(agent);
+      agent.state = "resting";
+      continue;
     }
     if (agent.path.some(tile => !tile.path)) abandonStaffTask(agent);
     if (agent.target && !staffTaskIsValid(agent.target)) abandonStaffTask(agent);
@@ -1931,8 +2030,11 @@ function update(dt) {
   if (incomeTimer > 3.2) {
     incomeTimer = 0;
     const looseLitter = state.tiles.reduce((sum, tile) => sum + Number(tile.litter || 0), 0);
+    const cleanerCoverage = staffTeam("cleaner")
+      .filter(agent => agent.state !== "resting")
+      .reduce((sum, agent) => sum + staffEfficiency(agent), 0);
     state.clean = clamp(
-      state.clean - state.guests.length * .075 - looseLitter * .04 + sceneryScore() * .002 + state.staff.cleaners * .65,
+      state.clean - state.guests.length * .075 - looseLitter * .04 + sceneryScore() * .002 + cleanerCoverage * .65,
       20,
       100
     );
@@ -1956,7 +2058,7 @@ function operatingCostBreakdown() {
     return sum + (tool?.amenity ? Number(tool.upkeep || 0) : 0);
   }, 0);
   const baseMaintenance = rideMaintenance + amenityMaintenance;
-  const baseParkStaff = state.staff.cleaners * 35 + state.staff.mechanics * 45;
+  const baseParkStaff = parkStaffWageTotal();
   const baseShopStaff = shopTiles().reduce((sum, tile) => {
     const shop = tile.object;
     return sum + (shop.open ? Number(shop.staff || 1) * shopStaffWage(shop) : 0);
@@ -1985,6 +2087,7 @@ function operatingCostBreakdown() {
   return {
     maintenance,
     staff,
+    parkStaff: baseParkStaff * factor,
     shopStaff: baseShopStaff * factor,
     transit,
     factor,
@@ -3143,6 +3246,15 @@ function saveGame() {
     guestLog: state.guestLog,
     staff: { ...state.staff },
     staffStats: { ...state.staffStats },
+    staffRoster: state.staffAgents.map(agent => ({
+      id: agent.id,
+      role: agent.role,
+      jobsCompleted: agent.jobsCompleted,
+      experience: agent.experience,
+      level: agent.level,
+      fatigue: agent.fatigue,
+      resting: agent.state === "resting"
+    })),
     transit: cloneTransitState(),
     progression: JSON.parse(JSON.stringify(state.progression)),
     tiles: state.tiles.map(tile => ({
@@ -3202,8 +3314,16 @@ function loadGame() {
       cleaningJobs: Math.max(0, Number(save.staffStats?.cleaningJobs) || 0),
       repairJobs: Math.max(0, Number(save.staffStats?.repairJobs) || 0)
     };
-    state.staffAgents = [];
     staffSequence = 0;
+    state.staffAgents = [];
+    const savedRoster = Array.isArray(save.staffRoster) ? save.staffRoster : [];
+    const remainingStaff = { cleaner: state.staff.cleaners, mechanic: state.staff.mechanics };
+    savedRoster.forEach(agent => {
+      const role = agent?.role;
+      if (!remainingStaff[role]) return;
+      state.staffAgents.push(createStaffAgent(role, agent));
+      remainingStaff[role]--;
+    });
     state.guests = [];
     state.buses = [];
     state.monorails = [];
@@ -3295,6 +3415,20 @@ function computeStats() {
   ui.round.textContent = state.round;
   ui.cleanerCount.textContent = state.staff.cleaners;
   ui.mechanicCount.textContent = state.staff.mechanics;
+  const cleanerTeamStats = staffTeamStats("cleaner");
+  const mechanicTeamStats = staffTeamStats("mechanic");
+  const cleanerTrainingCost = staffTrainingCost("cleaner");
+  const mechanicTrainingCost = staffTrainingCost("mechanic");
+  const cleanerLevelText = Number.isInteger(cleanerTeamStats.averageLevel) ? cleanerTeamStats.averageLevel.toFixed(0) : cleanerTeamStats.averageLevel.toFixed(1);
+  const mechanicLevelText = Number.isInteger(mechanicTeamStats.averageLevel) ? mechanicTeamStats.averageLevel.toFixed(0) : mechanicTeamStats.averageLevel.toFixed(1);
+  ui.cleanerLevel.textContent = cleanerTeamStats.count ? `Lv.${cleanerLevelText}` : "--";
+  ui.cleanerFatigue.textContent = cleanerTeamStats.count ? `${Math.round(cleanerTeamStats.averageFatigue)}%` : "--";
+  ui.cleanerTraining.textContent = cleanerTrainingCost ? `研修 $${cleanerTrainingCost}` : (cleanerTeamStats.count ? "研修完了" : "雇用が必要");
+  ui.cleanerTraining.disabled = cleanerTrainingCost <= 0;
+  ui.mechanicLevel.textContent = mechanicTeamStats.count ? `Lv.${mechanicLevelText}` : "--";
+  ui.mechanicFatigue.textContent = mechanicTeamStats.count ? `${Math.round(mechanicTeamStats.averageFatigue)}%` : "--";
+  ui.mechanicTraining.textContent = mechanicTrainingCost ? `研修 $${mechanicTrainingCost}` : (mechanicTeamStats.count ? "研修完了" : "雇用が必要");
+  ui.mechanicTraining.disabled = mechanicTrainingCost <= 0;
   ui.runningCost.textContent = `$${operatingCost().toLocaleString()} / 精算`;
   ui.admissionFee.textContent = `$${state.admissionFee}`;
   ui.admissionRevenue.textContent = `$${Math.round(state.finance.admissionRevenue).toLocaleString()}`;
@@ -3384,6 +3518,7 @@ function computeStats() {
   ui.upgradedRideCount.textContent = upgradedRides;
   ui.activeCleaners.textContent = state.staffAgents.filter(agent => agent.role === "cleaner" && agent.state === "cleaning").length;
   ui.activeMechanics.textContent = state.staffAgents.filter(agent => agent.role === "mechanic" && agent.state === "repairing").length;
+  ui.restingStaff.textContent = state.staffAgents.filter(agent => agent.state === "resting").length;
   ui.staffJobs.textContent = Math.floor(state.staffStats.cleaningJobs + state.staffStats.repairJobs);
   const amenities = state.tiles.map(tile => tile.object).filter(object => tools[object?.type]?.amenity);
   ui.benchUses.textContent = Math.floor(amenities.filter(object => object.type === "bench").reduce((sum, object) => sum + Number(object.usage || 0), 0));
@@ -4124,6 +4259,33 @@ function adjustStaff(role, delta) {
   computeStats();
 }
 
+function trainStaff(role) {
+  if (!["cleaner", "mechanic"].includes(role)) return false;
+  const labels = { cleaner: "清掃員", mechanic: "整備員" };
+  if (!staffTeam(role).length) {
+    toast(`${labels[role]}を雇ってから研修できます`);
+    return false;
+  }
+  const candidate = staffTrainingCandidate(role);
+  if (!candidate) {
+    toast(`${labels[role]}チームは全員Lv.${STAFF_MANAGEMENT_CONFIG.maxLevel}です`);
+    return false;
+  }
+  const cost = staffTrainingCost(role);
+  if (state.money < cost) {
+    toast("研修資金が足りません");
+    return false;
+  }
+  state.money -= cost;
+  state.finance.staffExpenses += cost;
+  candidate.level = clamp(Number(candidate.level || 1) + 1, 1, STAFF_MANAGEMENT_CONFIG.maxLevel);
+  candidate.experience = Math.max(Number(candidate.experience || 0), STAFF_MANAGEMENT_CONFIG.experienceThresholds[candidate.level - 1]);
+  candidate.fatigue = clamp(Number(candidate.fatigue || 0) + 8, 0, 100);
+  computeStats();
+  toast(`${labels[role]}をLv.${candidate.level}へ研修しました`);
+  return true;
+}
+
 function adjustAdmissionFee(delta) {
   const next = clamp(state.admissionFee + delta, 0, 75);
   if (next === state.admissionFee) return;
@@ -4497,6 +4659,8 @@ ui.cleanerMinus.addEventListener("click", () => adjustStaff("cleaners", -1));
 ui.cleanerPlus.addEventListener("click", () => adjustStaff("cleaners", 1));
 ui.mechanicMinus.addEventListener("click", () => adjustStaff("mechanics", -1));
 ui.mechanicPlus.addEventListener("click", () => adjustStaff("mechanics", 1));
+ui.cleanerTraining.addEventListener("click", () => trainStaff("cleaner"));
+ui.mechanicTraining.addEventListener("click", () => trainStaff("mechanic"));
 ui.busMinus.addEventListener("click", () => adjustBusFleet(-1));
 ui.busPlus.addEventListener("click", () => adjustBusFleet(1));
 ui.intervalMinus.addEventListener("click", () => adjustBusInterval(-1));
@@ -4586,6 +4750,13 @@ window.parkDebug = {
       cleaners: state.staff.cleaners,
       mechanics: state.staff.mechanics,
       staffAgents: state.staffAgents.length,
+      averageStaffLevel: Number((state.staffAgents.length
+        ? state.staffAgents.reduce((sum, agent) => sum + Number(agent.level || 1), 0) / state.staffAgents.length
+        : 0).toFixed(1)),
+      averageStaffFatigue: Math.round(state.staffAgents.length
+        ? state.staffAgents.reduce((sum, agent) => sum + Number(agent.fatigue || 0), 0) / state.staffAgents.length
+        : 0),
+      restingStaff: state.staffAgents.filter(agent => agent.state === "resting").length,
       cleaningJobs: state.staffStats.cleaningJobs,
       repairJobs: state.staffStats.repairJobs,
       operatingCost: operatingCost(),
@@ -4692,6 +4863,12 @@ window.parkDebug = {
   closeTutorial,
   adjustStaff,
   syncStaffAgents,
+  trainStaff,
+  staffEfficiency,
+  staffWage,
+  staffTeamStats,
+  staffTrainingCost,
+  parkStaffWageTotal,
   undoLastBuild,
   removeRange,
   spawnGuestAt,

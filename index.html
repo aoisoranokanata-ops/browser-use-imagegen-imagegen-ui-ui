@@ -202,6 +202,16 @@
             <button id="mechanicPlus" title="整備員を雇う">＋</button>
           </div>
         </div>
+        <div class="staff-development" aria-label="スタッフ研修">
+          <div class="staff-training-row">
+            <span><i class="cleaner-dot"></i>清掃チーム<small><b id="cleanerLevel">Lv.1.0</b>・疲労 <b id="cleanerFatigue">0%</b></small></span>
+            <button id="cleanerTraining">研修 $320</button>
+          </div>
+          <div class="staff-training-row">
+            <span><i class="mechanic-dot"></i>整備チーム<small><b id="mechanicLevel">Lv.1.0</b>・疲労 <b id="mechanicFatigue">0%</b></small></span>
+            <button id="mechanicTraining">研修 $440</button>
+          </div>
+        </div>
         <div class="maintenance-status">
           <span>故障中 <b id="brokenCount">0</b></span>
           <span>平均状態 <b id="conditionAverage">100%</b></span>
@@ -214,6 +224,7 @@
         <div class="staff-activity" aria-label="スタッフの稼働状況">
           <span><i class="cleaner-dot"></i>清掃中 <b id="activeCleaners">0</b></span>
           <span><i class="mechanic-dot"></i>整備中 <b id="activeMechanics">0</b></span>
+          <span>休憩中 <b id="restingStaff">0</b></span>
           <span>完了作業 <b id="staffJobs">0</b></span>
         </div>
         <div class="amenity-status" aria-label="休憩・衛生施設の利用状況">
