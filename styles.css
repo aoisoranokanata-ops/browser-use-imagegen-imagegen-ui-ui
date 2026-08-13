@@ -581,6 +581,26 @@ h1 { margin: 0; font-size: 21px; }
 .shop-market-grid b.positive { color: var(--green); }
 .shop-market-grid b.warning { color: var(--coral); }
 
+.shop-operations-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.shop-operations-summary span {
+  min-width: 0;
+  padding: 4px 5px;
+  background: rgba(73, 171, 194, .08);
+  border-radius: 4px;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
 .shop-stock-meter {
   height: 6px;
   margin-top: 7px;
@@ -594,6 +614,30 @@ h1 { margin: 0; font-size: 21px; }
 .shop-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 7px; }
 .shop-actions button { min-height: 32px; padding: 0 7px; font-size: 9px; }
 .shop-actions button.active { background: var(--teal); color: white; }
+
+.shop-management-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.shop-management-grid span {
+  padding: 6px 4px;
+  background: rgba(38, 49, 63, .05);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 8px;
+  text-align: center;
+}
+
+.shop-management-grid b { display: block; margin-top: 2px; color: var(--ink); font-size: 10px; }
+.shop-staff-stepper { display: grid; grid-template-columns: 32px 1fr 32px; gap: 5px; margin-top: 6px; }
+.shop-staff-stepper button { min-height: 32px; padding: 0; }
+.shop-staff-stepper span { display: grid; place-items: center; font-size: 9px; font-weight: 900; }
+.shop-development-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
+.shop-development-actions button { min-height: 34px; padding: 0 6px; font-size: 9px; }
+.shop-development-actions button.active { background: var(--green); color: white; }
 
 .shop-insight {
   margin: 7px 0 0;

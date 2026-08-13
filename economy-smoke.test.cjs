@@ -96,6 +96,8 @@ vm.runInContext(fs.readFileSync("game.js", "utf8"), sandbox, { filename: "game.j
 const debug = sandbox.parkDebug;
 const state = debug.state;
 debug.drawWorld();
+assert.equal(debug.transitVehicleSegment({ distance: Number.NaN }, [{ x: 0, y: 0 }, { x: 1, y: 0 }]), null);
+assert.equal(debug.transitVehicleSegment({ distance: -1 }, [{ x: 0, y: 0 }, { x: 1, y: 0 }]).from.x, 1);
 
 assert.equal(element("tutorialOverlay").hidden, false, "the beginner tutorial should open on first launch");
 for (let i = 0; i < 4; i++) element("tutorialNextBtn").click();
@@ -105,7 +107,13 @@ assert.equal(state.difficulty, "beginner");
 assert.equal(state.money, 30000);
 assert.equal(debug.difficultyCostFactor(), .4);
 assert.equal(state.tiles.find(tile => tile.object?.type === "kiosk").object.maxStock, 60);
-assert.equal(debug.operatingCostBreakdown().baseTotal, 145, "inactive rail systems must not charge vehicle upkeep");
+assert.equal(debug.operatingCostBreakdown().baseTotal, 163, "starter shop staffing should be the only new base cost");
+assert.equal(debug.operatingCostBreakdown().shopStaff, 18 * debug.difficultyCostFactor());
+const starterShop = state.tiles.find(tile => tile.object?.type === "kiosk").object;
+assert.equal(starterShop.open, true);
+assert.equal(starterShop.staff, 1);
+assert.equal(starterShop.level, 1);
+assert.equal(starterShop.reputation, 65);
 debug.setDifficulty("standard", { silent: true });
 assert.equal(state.money, 24000);
 assert.equal(debug.difficultyCostFactor(), .95 * .75);
@@ -170,6 +178,39 @@ assert.equal(kiosk.autoRestock, true);
 assert.equal(kiosk.pendingStock, 30, "re-enabling auto ordering should immediately cover low stock");
 for (let i = 0; i < 161; i++) debug.update(.05);
 assert.equal(kiosk.stock, 40);
+
+debug.inspect(state.tiles.find(tile => tile.object === kiosk));
+const shopStaffCostBeforeHire = debug.operatingCostBreakdown().shopStaff;
+const moneyBeforeShopHire = state.money;
+const staffExpensesBeforeShopHire = state.finance.staffExpenses;
+assert.equal(debug.adjustSelectedShopStaff(1), true);
+assert.equal(kiosk.staff, 2);
+assert.equal(moneyBeforeShopHire - state.money, 180);
+assert.equal(state.finance.staffExpenses - staffExpensesBeforeShopHire, 180);
+assert.equal(debug.operatingCostBreakdown().shopStaff, shopStaffCostBeforeHire + 18 * debug.difficultyCostFactor());
+const staffedShopCost = debug.operatingCostBreakdown().shopStaff;
+assert.equal(debug.toggleSelectedShopOpen(), true);
+assert.equal(kiosk.open, false);
+assert.ok(Math.abs(debug.operatingCostBreakdown().shopStaff - (staffedShopCost - 36 * debug.difficultyCostFactor())) < 1e-9);
+const closedShopGuest = {
+  tile: state.tiles.find(tile => tile.x === 8 && tile.y === 11),
+  budget: 50,
+  hunger: 90,
+  thirst: 10,
+  souvenirDesire: 10,
+  purchases: { food: false, drink: false, souvenir: false },
+  priceSensitivity: 1
+};
+assert.notEqual(debug.chooseShop(closedShopGuest, "food").tile.object, kiosk, "closed shops must be excluded from guest choices");
+assert.equal(debug.toggleSelectedShopOpen(), true);
+assert.equal(kiosk.open, true);
+const upgradeCost = debug.shopUpgradeCost(kiosk);
+const moneyBeforeUpgrade = state.money;
+assert.equal(debug.upgradeSelectedShop(), true);
+assert.equal(kiosk.level, 2);
+assert.equal(kiosk.maxStock, 72);
+assert.equal(moneyBeforeUpgrade - state.money, upgradeCost);
+assert.ok(kiosk.reputation > 65);
 
 const beforeAdmission = state.finance.admissionRevenue;
 debug.adjustAdmissionFee(-10);
@@ -286,6 +327,11 @@ const loadedKiosk = state.tiles.find(tile => tile.x === 9 && tile.y === 11).obje
 assert.equal(loadedKiosk.stock, savedShopStock);
 assert.equal(loadedKiosk.pendingStock, savedPendingStock);
 assert.equal(loadedKiosk.autoRestock, true);
+assert.equal(loadedKiosk.open, true);
+assert.equal(loadedKiosk.staff, 2);
+assert.equal(loadedKiosk.level, 2);
+assert.equal(loadedKiosk.maxStock, 72);
+assert.ok(loadedKiosk.reputation > 65);
 assert.equal(loadedKiosk.visits, 2);
 assert.equal(loadedKiosk.priceRejects, 1);
 assert.equal(loadedKiosk.revenue, 9);
@@ -695,6 +741,10 @@ delete legacyKiosk.revenue;
 delete legacyKiosk.supplyCost;
 delete legacyKiosk.recentInterest;
 delete legacyKiosk.recentSales;
+delete legacyKiosk.open;
+delete legacyKiosk.staff;
+delete legacyKiosk.level;
+delete legacyKiosk.reputation;
 storage.set("yumeshimaParkSaveV1", JSON.stringify(legacySave));
 debug.loadGame();
 assert.ok(state.progression.bestStars >= 1);
@@ -707,6 +757,10 @@ assert.equal(migratedKiosk.visits, 0);
 assert.equal(migratedKiosk.priceRejects, 0);
 assert.equal(migratedKiosk.revenue, 0);
 assert.equal(migratedKiosk.supplyCost, 0);
+assert.equal(migratedKiosk.open, true);
+assert.equal(migratedKiosk.staff, 1);
+assert.equal(migratedKiosk.level, 1);
+assert.equal(migratedKiosk.reputation, 65);
 storage.set("yumeshimaParkSaveV1", modernSave);
 debug.loadGame();
 assert.equal(state.progression.bestStars, 5);
