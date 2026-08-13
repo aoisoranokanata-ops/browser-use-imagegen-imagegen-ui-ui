@@ -48,7 +48,7 @@ element("game").getContext = () => context2d;
 
 const toolNames = [
   "inspect", "path", "remove", "bus_stop", "monorail_track", "monorail_station", "train_track", "train_station", "carousel", "wheel", "coaster",
-  "teacups", "kiosk", "bench", "trash_bin", "toilet", "tree", "shrub", "flower", "palm", "water", "decor"
+  "teacups", "kiosk", "drink_stand", "souvenir_shop", "bench", "trash_bin", "toilet", "tree", "shrub", "flower", "palm", "water", "decor"
 ];
 const toolButtons = new Map(toolNames.map(name => {
   const button = new MockElement();
@@ -185,16 +185,119 @@ state.finance.shopRevenue = 123;
 debug.inspect(state.tiles.find(tile => tile.x === 9 && tile.y === 11));
 assert.equal(debug.orderSelectedShop(), true);
 const savedPendingStock = kiosk.pendingStock;
+const costlyMealGuest = {
+  spent: false,
+  budget: 50,
+  hunger: 68,
+  archetype: "thrill",
+  priceSensitivity: 1.4,
+  satisfaction: 72,
+  thoughtCooldown: 0
+};
+kiosk.price = 15;
+const stockBeforePriceRefusal = kiosk.stock;
+assert.equal(debug.buyFromShop(costlyMealGuest, kiosk), false, "price-sensitive guests should reject an expensive meal");
+assert.equal(kiosk.stock, stockBeforePriceRefusal);
+assert.equal(kiosk.priceRejects, 1);
+assert.ok(debug.shopPriceTolerance(costlyMealGuest) < kiosk.price);
+const hungryFoodie = {
+  spent: false,
+  budget: 50,
+  hunger: 82,
+  archetype: "foodie",
+  priceSensitivity: .8,
+  satisfaction: 72,
+  thoughtCooldown: 0
+};
+kiosk.price = 9;
+assert.equal(debug.buyFromShop(hungryFoodie, kiosk), true, "hungry foodies should accept a fair meal price");
+assert.equal(kiosk.stock, stockBeforePriceRefusal - 1);
+assert.equal(kiosk.visits, 2);
+assert.equal(kiosk.sales, 1);
+assert.equal(kiosk.revenue, 9);
+assert.ok(kiosk.supplyCost > 0);
+const shopPerformanceBeforeSave = debug.shopPerformance(kiosk);
+assert.equal(shopPerformanceBeforeSave.conversion, .5);
+assert.equal(shopPerformanceBeforeSave.grossProfit, kiosk.revenue - kiosk.supplyCost);
+const savedShopStock = kiosk.stock;
+const savedSupplyCost = kiosk.supplyCost;
+debug.buildAt(7, 12, "drink_stand");
+debug.buildAt(9, 10, "souvenir_shop");
+const drinkStand = state.tiles.find(tile => tile.x === 7 && tile.y === 12).object;
+const souvenirShop = state.tiles.find(tile => tile.x === 9 && tile.y === 10).object;
+assert.equal(drinkStand.type, "drink_stand");
+assert.equal(drinkStand.maxStock, 72);
+assert.equal(drinkStand.price, 6);
+assert.equal(debug.shopDeliverySize(drinkStand), 36);
+assert.equal(debug.shopUnitCost(drinkStand), 2);
+assert.equal(souvenirShop.type, "souvenir_shop");
+assert.equal(souvenirShop.maxStock, 45);
+assert.equal(souvenirShop.price, 14);
+assert.equal(debug.shopDeliverySize(souvenirShop), 20);
+assert.equal(debug.shopUnitCost(souvenirShop), 6);
+
+const thirstyGuest = {
+  tile: state.tiles.find(tile => tile.x === 8 && tile.y === 10),
+  purchases: { food: false, drink: false, souvenir: false },
+  spent: false,
+  budget: 50,
+  hunger: 20,
+  thirst: 88,
+  souvenirDesire: 20,
+  archetype: "thrill",
+  priceSensitivity: 1,
+  satisfaction: 72,
+  thoughtCooldown: 0
+};
+assert.equal(debug.desiredShopKind(thirstyGuest), "drink");
+assert.equal(debug.chooseShop(thirstyGuest, "drink").tile.object, drinkStand);
+assert.equal(debug.buyFromShop(thirstyGuest, drinkStand), true);
+assert.equal(thirstyGuest.purchases.drink, true);
+assert.ok(thirstyGuest.thirst < 30);
+assert.equal(drinkStand.stock, 71);
+
+const souvenirGuest = {
+  tile: state.tiles.find(tile => tile.x === 8 && tile.y === 10),
+  purchases: { food: false, drink: false, souvenir: false },
+  spent: false,
+  budget: 60,
+  hunger: 20,
+  thirst: 20,
+  souvenirDesire: 90,
+  archetype: "scenic",
+  priceSensitivity: 1,
+  satisfaction: 72,
+  thoughtCooldown: 0
+};
+assert.equal(debug.desiredShopKind(souvenirGuest), "souvenir");
+assert.equal(debug.chooseShop(souvenirGuest, "souvenir").tile.object, souvenirShop);
+assert.equal(debug.buyFromShop(souvenirGuest, souvenirShop), true);
+assert.equal(souvenirGuest.purchases.souvenir, true);
+assert.ok(souvenirGuest.souvenirDesire < 20);
+assert.equal(souvenirShop.stock, 44);
+const finalShopRevenue = state.finance.shopRevenue;
 debug.saveGame();
 state.admissionFee = 1;
 state.finance.shopRevenue = 0;
 debug.loadGame();
 assert.equal(state.admissionFee, 41);
-assert.equal(state.finance.shopRevenue, 123);
+assert.equal(state.finance.shopRevenue, finalShopRevenue);
 const loadedKiosk = state.tiles.find(tile => tile.x === 9 && tile.y === 11).object;
-assert.equal(loadedKiosk.stock, 40);
+assert.equal(loadedKiosk.stock, savedShopStock);
 assert.equal(loadedKiosk.pendingStock, savedPendingStock);
 assert.equal(loadedKiosk.autoRestock, true);
+assert.equal(loadedKiosk.visits, 2);
+assert.equal(loadedKiosk.priceRejects, 1);
+assert.equal(loadedKiosk.revenue, 9);
+assert.equal(loadedKiosk.supplyCost, savedSupplyCost);
+const loadedDrinkStand = state.tiles.find(tile => tile.object?.type === "drink_stand").object;
+const loadedSouvenirShop = state.tiles.find(tile => tile.object?.type === "souvenir_shop").object;
+assert.equal(loadedDrinkStand.maxStock, 72);
+assert.equal(loadedDrinkStand.stock, 71);
+assert.equal(loadedDrinkStand.sales, 1);
+assert.equal(loadedSouvenirShop.maxStock, 45);
+assert.equal(loadedSouvenirShop.stock, 44);
+assert.equal(loadedSouvenirShop.sales, 1);
 
 state.finance.admissionRevenue = 500;
 state.finance.maintenanceExpenses = 100;
@@ -586,6 +689,12 @@ delete legacyKiosk.autoRestock;
 delete legacyKiosk.pendingStock;
 delete legacyKiosk.deliveryTimer;
 delete legacyKiosk.sales;
+delete legacyKiosk.visits;
+delete legacyKiosk.priceRejects;
+delete legacyKiosk.revenue;
+delete legacyKiosk.supplyCost;
+delete legacyKiosk.recentInterest;
+delete legacyKiosk.recentSales;
 storage.set("yumeshimaParkSaveV1", JSON.stringify(legacySave));
 debug.loadGame();
 assert.ok(state.progression.bestStars >= 1);
@@ -594,6 +703,10 @@ assert.ok(state.progression.unlockedTools.includes("coaster"), "existing advance
 const migratedKiosk = state.tiles.find(tile => tile.object?.type === "kiosk").object;
 assert.equal(migratedKiosk.maxStock, 60, "legacy beginner shops should receive the larger capacity");
 assert.equal(migratedKiosk.autoRestock, true);
+assert.equal(migratedKiosk.visits, 0);
+assert.equal(migratedKiosk.priceRejects, 0);
+assert.equal(migratedKiosk.revenue, 0);
+assert.equal(migratedKiosk.supplyCost, 0);
 storage.set("yumeshimaParkSaveV1", modernSave);
 debug.loadGame();
 assert.equal(state.progression.bestStars, 5);

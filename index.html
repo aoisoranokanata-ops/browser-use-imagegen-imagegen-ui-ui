@@ -79,10 +79,18 @@
         </div>
       </div>
 
+      <div class="tool-category" data-category="shops">
+        <button class="category-trigger" type="button" aria-expanded="false">売店<span>▼</span></button>
+        <div class="category-menu" role="menu">
+          <button data-tool="kiosk" title="空腹を満たすスナック売店">$900<span>スナック</span></button>
+          <button data-tool="drink_stand" title="のどの渇きを癒すドリンクスタンド">$750<span>ドリンク</span></button>
+          <button data-tool="souvenir_shop" title="思い出を販売するおみやげショップ">$1.6k<span>おみやげ</span></button>
+        </div>
+      </div>
+
       <div class="tool-category" data-category="scenery">
         <button class="category-trigger" type="button" aria-expanded="false">施設・景観<span>▼</span></button>
         <div class="category-menu" role="menu">
-          <button data-tool="kiosk" title="スナック売店">$900<span>売店</span></button>
           <button data-tool="bench" title="ゲストが休憩できるベンチ">$180<span>ベンチ</span></button>
           <button data-tool="trash_bin" title="近くのごみを受け止めるごみ箱">$120<span>ごみ箱</span></button>
           <button data-tool="toilet" title="ゲストの衛生需要に応えるトイレ">$1.2k<span>トイレ</span></button>
@@ -156,6 +164,11 @@
         <div class="shop-stock-summary">
           <span>売店在庫 <b id="shopStockTotal">0 / 0</b></span>
           <span id="shopDeliveryStatus">配送待ちなし</span>
+        </div>
+        <div class="shop-market-grid" aria-label="売店の需要と採算">
+          <span>需要<b id="shopDemandStatus">観測中</b></span>
+          <span>成約率<b id="shopConversion">--</b></span>
+          <span>仕入差引<b id="shopGrossProfit">$0</b></span>
         </div>
         <div class="difficulty-status">
           <span id="difficultyLabel">はじめて</span>

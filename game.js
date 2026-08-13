@@ -76,6 +76,9 @@ const ui = {
   shopRevenue: document.getElementById("shopRevenue"),
   shopStockTotal: document.getElementById("shopStockTotal"),
   shopDeliveryStatus: document.getElementById("shopDeliveryStatus"),
+  shopDemandStatus: document.getElementById("shopDemandStatus"),
+  shopConversion: document.getElementById("shopConversion"),
+  shopGrossProfit: document.getElementById("shopGrossProfit"),
   expenseTotal: document.getElementById("expenseTotal"),
   netTotal: document.getElementById("netTotal"),
   difficultyLabel: document.getElementById("difficultyLabel"),
@@ -117,11 +120,11 @@ const SHOP_CONFIG = {
   instantUnitCost: 4
 };
 const GUEST_ARCHETYPES = {
-  family: { label: "子ども連れ", rideBias: { carousel: 12, teacups: 9, wheel: 4, coaster: -8 }, hungerRate: 1.15, fatigueRate: 1.05 },
-  thrill: { label: "絶叫好き", rideBias: { coaster: 18, wheel: 7, carousel: -5, teacups: -4 }, hungerRate: .9, fatigueRate: .85 },
-  scenic: { label: "景観重視", rideBias: { wheel: 9, carousel: 5, coaster: -2 }, hungerRate: .8, fatigueRate: .75 },
-  foodie: { label: "グルメ", rideBias: { carousel: 2, teacups: 2 }, hungerRate: 1.5, fatigueRate: .8 },
-  relaxed: { label: "のんびり", rideBias: { carousel: 7, wheel: 5, coaster: -7 }, hungerRate: .85, fatigueRate: .65 }
+  family: { label: "子ども連れ", rideBias: { carousel: 12, teacups: 9, wheel: 4, coaster: -8 }, hungerRate: 1.15, thirstRate: 1.05, souvenirBias: 1.25, fatigueRate: 1.05 },
+  thrill: { label: "絶叫好き", rideBias: { coaster: 18, wheel: 7, carousel: -5, teacups: -4 }, hungerRate: .9, thirstRate: 1.2, souvenirBias: .75, fatigueRate: .85 },
+  scenic: { label: "景観重視", rideBias: { wheel: 9, carousel: 5, coaster: -2 }, hungerRate: .8, thirstRate: .8, souvenirBias: 1.35, fatigueRate: .75 },
+  foodie: { label: "グルメ", rideBias: { carousel: 2, teacups: 2 }, hungerRate: 1.5, thirstRate: 1, souvenirBias: .85, fatigueRate: .8 },
+  relaxed: { label: "のんびり", rideBias: { carousel: 7, wheel: 5, coaster: -7 }, hungerRate: .85, thirstRate: .85, souvenirBias: 1, fatigueRate: .65 }
 };
 const TRANSIT_MODE_CONFIGS = {
   bus: {
@@ -182,7 +185,9 @@ const tools = {
   wheel: { cost: 3200, label: "観覧車", ride: true, cap: 10, duration: 13, appeal: 27, upkeep: 28, defaultPrice: 10, color: "#49abc2" },
   coaster: { cost: 4800, label: "コースター", ride: true, cap: 12, duration: 10, appeal: 36, upkeep: 45, defaultPrice: 14, color: "#f1b84f" },
   teacups: { cost: 1400, label: "ティーカップ", ride: true, cap: 6, duration: 7, appeal: 15, upkeep: 14, defaultPrice: 6, color: "#9bcf67" },
-  kiosk: { cost: 900, label: "スナック売店", shop: true, defaultPrice: 8, maxStock: 60 },
+  kiosk: { cost: 900, label: "スナック売店", shop: true, shopKind: "food", defaultPrice: 8, unitCost: 3, instantUnitCost: 4, deliverySize: 30, capacityScale: 1 },
+  drink_stand: { cost: 750, label: "ドリンクスタンド", shop: true, shopKind: "drink", defaultPrice: 6, unitCost: 2, instantUnitCost: 3, deliverySize: 36, capacityScale: 1.2 },
+  souvenir_shop: { cost: 1600, label: "おみやげショップ", shop: true, shopKind: "souvenir", defaultPrice: 14, unitCost: 6, instantUnitCost: 8, deliverySize: 20, capacityScale: .75 },
   bench: { cost: 180, label: "パークベンチ", amenity: "bench", scenery: 2, upkeep: 1 },
   trash_bin: { cost: 120, label: "ごみ箱", amenity: "bin", scenery: 1, upkeep: 2, maxFill: 24 },
   toilet: { cost: 1200, label: "パークトイレ", amenity: "toilet", scenery: 2, upkeep: 12 },
@@ -338,8 +343,8 @@ function placeStarterRide(x, y, type) {
 }
 
 function placeStarterObject(x, y, type) {
-  if (type === "kiosk") {
-    tileAt(x, y).object = createShop();
+  if (tools[type]?.shop) {
+    tileAt(x, y).object = createShop(type);
     return;
   }
   if (tools[type]?.transit) {
@@ -351,26 +356,38 @@ function placeStarterObject(x, y, type) {
   tileAt(x, y).object = { type };
 }
 
-function shopCapacityForDifficulty(mode = state.difficulty) {
-  return SHOP_CONFIG.capacities[mode] || SHOP_CONFIG.capacities.beginner;
+function shopCapacityForDifficulty(mode = state.difficulty, type = "kiosk") {
+  const base = SHOP_CONFIG.capacities[mode] || SHOP_CONFIG.capacities.beginner;
+  return Math.max(1, Math.round(base * Number(tools[type]?.capacityScale || 1)));
 }
 
-function createShop(saved = null) {
+function createShop(type = "kiosk", saved = null) {
+  if (type && typeof type === "object") {
+    saved = type;
+    type = saved.type || "kiosk";
+  }
+  if (!tools[type]?.shop) type = "kiosk";
   const legacySave = !!saved && saved.autoRestock === undefined;
-  const difficultyCapacity = shopCapacityForDifficulty();
+  const difficultyCapacity = shopCapacityForDifficulty(state.difficulty, type);
   const maxStock = saved
     ? Math.max(1, legacySave ? Math.max(Number(saved.maxStock || 0), difficultyCapacity) : Number(saved.maxStock || difficultyCapacity))
     : difficultyCapacity;
   return {
-    type: "kiosk",
+    type,
     stock: clamp(Number(saved?.stock ?? maxStock), 0, maxStock),
     maxStock,
-    price: clamp(Number(saved?.price ?? tools.kiosk.defaultPrice), 1, 20),
+    price: clamp(Number(saved?.price ?? tools[type].defaultPrice), 1, 24),
     autoRestock: saved?.autoRestock === undefined ? true : !!saved.autoRestock,
     deliveryTimer: Math.max(0, Number(saved?.deliveryTimer || 0)),
-    pendingStock: clamp(Number(saved?.pendingStock || 0), 0, SHOP_CONFIG.deliverySize),
+    pendingStock: clamp(Number(saved?.pendingStock || 0), 0, shopDeliverySize({ type })),
     sales: Math.max(0, Number(saved?.sales || 0)),
     lostSales: Math.max(0, Number(saved?.lostSales || 0)),
+    visits: Math.max(0, Number(saved?.visits || 0)),
+    priceRejects: Math.max(0, Number(saved?.priceRejects || 0)),
+    revenue: Math.max(0, Number(saved?.revenue || 0)),
+    supplyCost: Math.max(0, Number(saved?.supplyCost || 0)),
+    recentInterest: Math.max(0, Number(saved?.recentInterest || 0)),
+    recentSales: Math.max(0, Number(saved?.recentSales || 0)),
     orders: Math.max(0, Number(saved?.orders || 0)),
     deliveries: Math.max(0, Number(saved?.deliveries || 0)),
     orderBlocked: false
@@ -705,7 +722,7 @@ function drawObject(tile, p) {
   if (type === "bus_stop") drawBusStop(p, tile.object);
   if (type === "monorail_station") drawMonorailStation(p, tile.object);
   if (type === "train_station") drawParkTrainStation(p, tile.object);
-  if (type === "kiosk") drawKiosk(p, tile.object);
+  if (tools[type]?.shop) drawKiosk(p, tile.object);
   if (type === "bench") drawBench(p, tile.object);
   if (type === "trash_bin") drawTrashBin(p, tile.object);
   if (type === "toilet") drawToilet(p, tile.object);
@@ -963,24 +980,34 @@ function drawCup(x, y, color) {
 
 function drawKiosk(p, kiosk = {}) {
   const z = camera.zoom;
+  const kind = tools[kiosk.type]?.shopKind || "food";
+  const palette = kind === "drink"
+    ? { roof: "#49abc2", stripe: "#fff7df", counter: "#79cfcc", flag: "#1b7e97" }
+    : kind === "souvenir"
+      ? { roof: "#8e6fb5", stripe: "#fff7df", counter: "#ef6f61", flag: "#f1b84f" }
+      : { roof: "#ef6f61", stripe: "#fff7df", counter: "#f1b84f", flag: "#f1b84f" };
   ctx.save();
   ctx.translate(p.x, p.y + 18 * z);
   drawSoftShadow(0, 8 * z, 30 * z, 10 * z, .16);
-  drawHouse(0, 0, "#fff7df", "#ef6f61");
-  ctx.fillStyle = "#49abc2";
+  drawHouse(0, 0, "#fff7df", palette.roof);
+  ctx.fillStyle = palette.roof;
   roundRect(-20 * z, -14 * z, 40 * z, 8 * z, 3 * z);
   ctx.fill();
   for (let i = 0; i < 5; i++) {
-    ctx.fillStyle = i % 2 ? "#fff7df" : "#ef6f61";
+    ctx.fillStyle = i % 2 ? palette.stripe : palette.roof;
     ctx.fillRect((-20 + i * 8) * z, -14 * z, 8 * z, 8 * z);
   }
-  ctx.fillStyle = "#f1b84f";
+  ctx.fillStyle = palette.counter;
   ctx.fillRect(-13 * z, -10 * z, 26 * z, 10 * z);
   ctx.fillStyle = "#26313f";
   ctx.fillRect(4 * z, -2 * z, 8 * z, 12 * z);
-  drawFlag(-24 * z, -14 * z, "#f1b84f", -1);
-  const stock = Number(kiosk.stock ?? tools.kiosk.maxStock);
-  const maxStock = Number(kiosk.maxStock ?? tools.kiosk.maxStock);
+  drawFlag(-24 * z, -14 * z, palette.flag, -1);
+  ctx.fillStyle = "#fff7df";
+  ctx.font = `900 ${(kind === "souvenir" ? 9 : 12) * z}px sans-serif`;
+  ctx.textAlign = "center";
+  ctx.fillText(kind === "drink" ? "D" : kind === "souvenir" ? "GIFT" : "S", 0, -27 * z);
+  const stock = Number(kiosk.stock ?? shopCapacityForDifficulty(state.difficulty, kiosk.type));
+  const maxStock = Number(kiosk.maxStock ?? shopCapacityForDifficulty(state.difficulty, kiosk.type));
   if (stock <= 0) {
     drawRideStatusBadge("売切", -17 * z, -49 * z, "#d84f4f");
   } else if (Number(kiosk.pendingStock || 0) > 0) {
@@ -1725,16 +1752,25 @@ function shopTiles() {
 }
 
 function shopReorderPoint(shop) {
-  return Math.max(6, Math.ceil(Number(shop.maxStock || shopCapacityForDifficulty()) * .2));
+  return Math.max(6, Math.ceil(Number(shop.maxStock || shopCapacityForDifficulty(state.difficulty, shop.type)) * .2));
+}
+
+function shopDeliverySize(shop) {
+  return Math.max(1, Number(tools[shop?.type]?.deliverySize || SHOP_CONFIG.deliverySize));
+}
+
+function shopUnitCost(shop, instant = false) {
+  const tool = tools[shop?.type] || tools.kiosk;
+  return Math.max(1, Number(instant ? tool.instantUnitCost : tool.unitCost) || (instant ? SHOP_CONFIG.instantUnitCost : SHOP_CONFIG.autoUnitCost));
 }
 
 function placeShopOrder(shop, options = {}) {
   if (!shop || Number(shop.pendingStock || 0) > 0) return false;
-  const maxStock = Number(shop.maxStock || shopCapacityForDifficulty());
+  const maxStock = Number(shop.maxStock || shopCapacityForDifficulty(state.difficulty, shop.type));
   const missing = Math.max(0, maxStock - Number(shop.stock || 0));
-  const quantity = Math.min(SHOP_CONFIG.deliverySize, missing);
+  const quantity = Math.min(shopDeliverySize(shop), missing);
   if (!quantity) return false;
-  const cost = quantity * SHOP_CONFIG.autoUnitCost;
+  const cost = quantity * shopUnitCost(shop);
   if (state.money < cost) {
     shop.orderBlocked = true;
     if (!options.silent) toast("自動発注の仕入れ資金が足りません");
@@ -1742,6 +1778,7 @@ function placeShopOrder(shop, options = {}) {
   }
   state.money -= cost;
   state.finance.restockExpenses += cost;
+  shop.supplyCost = Number(shop.supplyCost || 0) + cost;
   shop.pendingStock = quantity;
   shop.deliveryTimer = SHOP_CONFIG.deliverySeconds;
   shop.orders = Number(shop.orders || 0) + 1;
@@ -1753,11 +1790,14 @@ function placeShopOrder(shop, options = {}) {
 function updateShops(dt) {
   for (const tile of shopTiles()) {
     const shop = tile.object;
+    const demandDecay = Math.exp(-dt / 45);
+    shop.recentInterest = Number(shop.recentInterest || 0) * demandDecay;
+    shop.recentSales = Number(shop.recentSales || 0) * demandDecay;
     if (Number(shop.pendingStock || 0) > 0) {
       const previousSecond = Math.ceil(Number(shop.deliveryTimer || 0));
       shop.deliveryTimer = Math.max(0, Number(shop.deliveryTimer || 0) - dt);
       if (shop.deliveryTimer <= 0) {
-        shop.stock = Math.min(Number(shop.maxStock || shopCapacityForDifficulty()), Number(shop.stock || 0) + Number(shop.pendingStock || 0));
+        shop.stock = Math.min(Number(shop.maxStock || shopCapacityForDifficulty(state.difficulty, shop.type)), Number(shop.stock || 0) + Number(shop.pendingStock || 0));
         shop.pendingStock = 0;
         shop.deliveries = Number(shop.deliveries || 0) + 1;
         shop.orderBlocked = false;
@@ -2054,6 +2094,9 @@ function spawnGuestAt(startTile) {
     budget: (archetype === "family" ? 48 : 28) + Math.random() * 54,
     priceSensitivity: .65 + Math.random() * .8,
     hunger: (archetype === "foodie" ? 52 : 24) + Math.random() * 18,
+    thirst: (archetype === "thrill" ? 38 : 22) + Math.random() * 20,
+    souvenirDesire: (archetype === "scenic" || archetype === "family" ? 24 : 12) + Math.random() * 18,
+    purchases: { food: false, drink: false, souvenir: false },
     fatigue: (archetype === "family" ? 24 : 12) + Math.random() * 36,
     restroomNeed: (archetype === "family" ? 32 : 20) + Math.random() * 40,
     satisfaction: 72,
@@ -2106,20 +2149,103 @@ function localSceneryScore(object) {
   }, 0);
 }
 
-function chooseShop(guest) {
+function shopKind(shop) {
+  return tools[shop?.type]?.shopKind || "food";
+}
+
+function guestPurchased(guest, kind) {
+  return !!guest?.purchases?.[kind] || (kind === "food" && !!guest?.spent);
+}
+
+function desiredShopKind(guest) {
+  const needs = [
+    { kind: "drink", score: Number(guest?.thirst || 0), threshold: 64 },
+    { kind: "food", score: Number(guest?.hunger || 0), threshold: 66 },
+    { kind: "souvenir", score: Number(guest?.souvenirDesire || 0), threshold: 68 }
+  ].filter(need => need.score >= need.threshold && !guestPurchased(guest, need.kind));
+  needs.sort((a, b) => (b.score - b.threshold) - (a.score - a.threshold));
+  return needs[0]?.kind || null;
+}
+
+function shopKindLabel(kind) {
+  return kind === "drink" ? "ドリンク" : kind === "souvenir" ? "おみやげ" : "スナック";
+}
+
+function routeGuestToShop(guest, kind, announce = true) {
+  const choice = chooseShop(guest, kind);
+  if (!choice) return false;
+  guest.goal = choice.tile.object;
+  guest.goalType = "shop";
+  guest.goalShopKind = kind;
+  guest.path = findPath(guest.tile, choice.pathTile);
+  if (announce) {
+    const message = kind === "drink"
+      ? "のどが渇いたのでドリンクを買おう"
+      : kind === "souvenir"
+        ? "思い出におみやげを選ぼう"
+        : "おなかが空いたのでスナックを買おう";
+    guestThought(guest, message, `${shopKindLabel(kind)}へ`, "neutral");
+  }
+  return true;
+}
+
+function chooseShop(guest, preferredKind = null) {
   const choices = state.tiles
-    .filter(tile => tools[tile.object?.type]?.shop && Number(tile.object.stock ?? 0) > 0)
+    .filter(tile => tools[tile.object?.type]?.shop
+      && (!preferredKind || shopKind(tile.object) === preferredKind)
+      && tile.object !== guest?.shopRejected
+      && Number(tile.object.stock ?? 0) > 0)
     .map(tile => ({
       tile,
       pathTile: nearestPathForTile(tile),
       demand: state.guests.filter(candidate => candidate !== guest && candidate.goalType === "shop" && candidate.goal === tile.object).length,
-      stockRatio: Number(tile.object.stock || 0) / Math.max(1, Number(tile.object.maxStock || shopCapacityForDifficulty()))
+      stockRatio: Number(tile.object.stock || 0) / Math.max(1, Number(tile.object.maxStock || shopCapacityForDifficulty())),
+      pricePressure: Number(tile.object.price ?? tools[tile.object.type].defaultPrice) / Math.max(1, shopPriceTolerance(guest, tile.object))
     }))
     .filter(choice => choice.pathTile && (choice.pathTile === guest.tile || findPath(guest.tile, choice.pathTile).length));
   const score = choice => Math.abs(choice.tile.x - guest.tile.x) + Math.abs(choice.tile.y - guest.tile.y)
-    + choice.demand * 3 - choice.stockRatio * 4;
+    + choice.demand * 3 - choice.stockRatio * 4 + choice.pricePressure * 3;
   choices.sort((a, b) => score(a) - score(b));
   return choices[0] || null;
+}
+
+function shopPriceTolerance(guest, shop = { type: "kiosk" }) {
+  const kind = shopKind(shop);
+  const need = kind === "drink" ? guest?.thirst : kind === "souvenir" ? guest?.souvenirDesire : guest?.hunger;
+  const needPremium = clamp((Number(need || 0) - 55) * .08, 0, 4);
+  const archetypePremium = kind === "food" && guest?.archetype === "foodie"
+    ? 2
+    : kind === "souvenir" && ["family", "scenic"].includes(guest?.archetype)
+      ? 2
+      : kind === "drink" && guest?.archetype === "thrill"
+        ? 1
+        : 0;
+  const sensitivityPenalty = (Number(guest?.priceSensitivity || 1) - 1) * 4;
+  return clamp(Math.round(tools[shop.type]?.defaultPrice + needPremium + archetypePremium - sensitivityPenalty), 3, 22);
+}
+
+function shopPerformance(shop) {
+  const visits = Number(shop?.visits || 0);
+  const sales = Number(shop?.sales || 0);
+  const priceRejects = Number(shop?.priceRejects || 0);
+  const lostSales = Number(shop?.lostSales || 0);
+  const conversion = visits > 0 ? sales / visits : 0;
+  const grossProfit = Number(shop?.revenue || 0) - Number(shop?.supplyCost || 0);
+  const recentInterest = Number(shop?.recentInterest || 0);
+  let insight = "来店データを集めています";
+  let warning = false;
+  if (lostSales >= 3 && lostSales > priceRejects) {
+    insight = "品切れ損失が多めです。在庫と自動発注を確認";
+    warning = true;
+  } else if (priceRejects >= 3 && priceRejects / Math.max(1, visits) >= .25) {
+    insight = "価格離脱が多めです。$1値下げして反応を比較";
+    warning = true;
+  } else if (visits >= 5 && conversion >= .82 && recentInterest >= 3 && Number(shop.price || 0) < 15) {
+    insight = "需要と成約率が好調です。$1値上げの余地あり";
+  } else if (visits >= 3) {
+    insight = "価格と在庫のバランスは安定しています";
+  }
+  return { visits, sales, priceRejects, lostSales, conversion, grossProfit, recentInterest, insight, warning };
 }
 
 function chooseAmenity(guest, amenityType) {
@@ -2196,6 +2322,8 @@ function updateGuest(g, dt) {
   g.thoughtTimer = Math.max(0, Number(g.thoughtTimer || 0) - dt);
   g.thoughtCooldown = Math.max(0, Number(g.thoughtCooldown || 0) - dt);
   g.hunger = clamp(Number(g.hunger || 0) + dt * profile.hungerRate, 0, 100);
+  g.thirst = clamp(Number(g.thirst || 0) + dt * Number(profile.thirstRate || .9), 0, 100);
+  g.souvenirDesire = clamp(Number(g.souvenirDesire || 0) + dt * .035 * Number(profile.souvenirBias || 1), 0, 100);
   g.fatigue = clamp(Number(g.fatigue || 0) + dt * profile.fatigueRate * (g.state === "queued" ? 1.35 : 1), 0, 100);
   g.restroomNeed = clamp(Number(g.restroomNeed || 0) + dt * (g.archetype === "family" ? .8 : .65), 0, 100);
 
@@ -2247,19 +2375,14 @@ function updateGuest(g, dt) {
     guestThought(g, "疲れたので休める場所がほしい", "休憩したい", "negative", true);
   }
 
-  if (g.state === "walking" && !["shop", "bench", "toilet"].includes(g.goalType) && !g.spent && g.hunger >= 66) {
-    const choice = chooseShop(g);
-    if (choice) {
-      g.goal = choice.tile.object;
-      g.goalType = "shop";
-      g.path = findPath(g.tile, choice.pathTile);
-      guestThought(g, "おなかが空いたので売店へ行こう", "売店へ行こう", "neutral");
-    } else if (g.hunger >= 80) {
-      const deliveryPending = shopTiles().some(tile => Number(tile.object.pendingStock || 0) > 0);
+  if (g.state === "walking" && !["shop", "bench", "toilet"].includes(g.goalType)) {
+    const desiredKind = desiredShopKind(g);
+    if (desiredKind && !routeGuestToShop(g, desiredKind) && [g.hunger, g.thirst, g.souvenirDesire].some(value => Number(value || 0) >= 82)) {
+      const deliveryPending = shopTiles().some(tile => shopKind(tile.object) === desiredKind && Number(tile.object.pendingStock || 0) > 0);
       guestThought(
         g,
-        deliveryPending ? "売店の商品が配送中なので少し待とう" : "食べ物を買える売店が見つからない",
-        deliveryPending ? "商品を配送中" : "売店がない",
+        deliveryPending ? `${shopKindLabel(desiredKind)}が配送中なので少し待とう` : `${shopKindLabel(desiredKind)}を買える店が見つからない`,
+        deliveryPending ? "商品を配送中" : `${shopKindLabel(desiredKind)}がない`,
         deliveryPending ? "neutral" : "negative"
       );
       g.satisfaction -= dt * (deliveryPending ? .04 : .15);
@@ -2269,13 +2392,17 @@ function updateGuest(g, dt) {
   if (!g.path.length) {
     if (g.state === "leaving") { g.done = true; return; }
     if (g.goalType === "shop" && g.goal) {
+      const desiredKind = g.goalShopKind || shopKind(g.goal);
       const purchased = buyFromShop(g, g.goal);
-      const alternative = !purchased && !g.spent ? chooseShop(g) : null;
+      const alternative = !purchased && !guestPurchased(g, desiredKind) ? chooseShop(g, desiredKind) : null;
       if (alternative) {
         g.goal = alternative.tile.object;
         g.goalType = "shop";
+        g.goalShopKind = desiredKind;
         g.path = findPath(g.tile, alternative.pathTile);
       } else {
+        g.shopRejected = null;
+        g.goalShopKind = null;
         routeGuestToRideOrExit(g);
       }
     } else if (["bench", "toilet"].includes(g.goalType) && g.goal) {
@@ -2310,8 +2437,9 @@ function updateGuest(g, dt) {
     g.pos.x += dx / dist * step;
     g.pos.y += dy / dist * step;
   }
-  if (!g.spent && g.hunger >= 48 && Math.random() < .003) {
-    const shop = neighbors(g.tile).find(t => t.object?.type === "kiosk")?.object;
+  const impulseKind = desiredShopKind(g);
+  if (impulseKind && Math.random() < .003) {
+    const shop = neighbors(g.tile).find(t => tools[t.object?.type]?.shop && shopKind(t.object) === impulseKind)?.object;
     if (shop) buyFromShop(g, shop);
   }
   if (g.archetype === "scenic" && localTileScenery(g.tile) < 5) {
@@ -2330,32 +2458,48 @@ function localTileScenery(origin) {
 }
 
 function buyFromShop(guest, shop) {
-  if (guest.spent) return false;
+  const kind = shopKind(shop);
+  if (guestPurchased(guest, kind)) return false;
   const stock = Number(shop.stock ?? 0);
-  const price = Number(shop.price ?? tools.kiosk.defaultPrice);
+  const price = Number(shop.price ?? tools[shop.type].defaultPrice);
+  const tolerance = shopPriceTolerance(guest, shop);
+  shop.visits = Number(shop.visits || 0) + 1;
+  shop.recentInterest = Number(shop.recentInterest || 0) + 1;
   if (stock <= 0) {
     shop.lostSales = Number(shop.lostSales || 0) + 1;
     guest.satisfaction -= 7;
     state.sentiment = clamp(state.sentiment - .3, -20, 20);
+    guest.shopRejected = shop;
     guestThought(guest, "売店の商品が売り切れていた", "売り切れだ", "negative", true);
     return false;
   }
-  guest.spent = true;
-  if (price > guest.budget) {
+  if (price > guest.budget || price > tolerance) {
+    shop.priceRejects = Number(shop.priceRejects || 0) + 1;
+    guest.shopRejected = shop;
     guest.satisfaction -= 5;
-    guestThought(guest, "売店の商品が予算より高かった", "ちょっと高い", "negative", true);
+    guestThought(guest, `商品が高く感じた（希望 $${tolerance}）`, "ちょっと高い", "negative", true);
     return false;
   }
   shop.stock--;
   shop.sales = Number(shop.sales || 0) + 1;
+  shop.recentSales = Number(shop.recentSales || 0) + 1;
+  shop.revenue = Number(shop.revenue || 0) + price;
+  guest.purchases ||= { food: !!guest.spent, drink: false, souvenir: false };
+  guest.purchases[kind] = true;
+  if (kind === "food") guest.spent = true;
+  guest.shopRejected = null;
   guest.budget -= price;
-  guest.hunger = Math.max(8, guest.hunger - 58);
+  if (kind === "drink") guest.thirst = Math.max(5, Number(guest.thirst || 0) - 66);
+  else if (kind === "souvenir") guest.souvenirDesire = Math.max(0, Number(guest.souvenirDesire || 0) - 82);
+  else guest.hunger = Math.max(8, Number(guest.hunger || 0) - 58);
   state.money += price;
   state.finance.shopRevenue += price;
-  const value = clamp(.35 - Math.max(0, price - tools.kiosk.defaultPrice) * .06, -.25, .35);
+  const value = clamp(.35 - Math.max(0, price - tools[shop.type].defaultPrice) * .06, -.25, .35);
   state.sentiment = clamp(state.sentiment + value, -20, 20);
   guest.satisfaction += value >= 0 ? 5 : -3;
-  guestThought(guest, value >= 0 ? "おいしくて値段もちょうどいい" : "おいしいけれど少し高い", value >= 0 ? "おいしい" : "少し高い", value >= 0 ? "positive" : "negative", true);
+  const positiveMessage = kind === "drink" ? "冷たいドリンクで元気が出た" : kind === "souvenir" ? "すてきな思い出を持ち帰れそう" : "おいしくて値段もちょうどいい";
+  const positiveShort = kind === "drink" ? "すっきり" : kind === "souvenir" ? "いい思い出" : "おいしい";
+  guestThought(guest, value >= 0 ? positiveMessage : `${shopKindLabel(kind)}は良いけれど少し高い`, value >= 0 ? positiveShort : "少し高い", value >= 0 ? "positive" : "negative", true);
   if (shop.autoRestock && Number(shop.stock || 0) <= shopReorderPoint(shop)) placeShopOrder(shop, { silent: true });
   return true;
 }
@@ -2418,19 +2562,14 @@ function updateRide(ride, dt) {
       );
       const preference = Number(guest.profile?.rideBias?.[ride.type] || 0);
       guest.satisfaction = clamp(guest.satisfaction + value * 4 + preference * .25, 0, 100);
+      guest.souvenirDesire = clamp(Number(guest.souvenirDesire || 0) + 18 * Number(guest.profile?.souvenirBias || 1), 0, 100);
       if (value < 0) guestThought(guest, "楽しかったけれど乗車料金が高い", "料金が高い", "negative", true);
       else if (guest.archetype === "thrill" && ride.type === "coaster") guestThought(guest, "このコースターは最高にスリル満点", "最高の絶叫", "positive", true);
       else if (guest.archetype === "scenic" && localSceneryScore(ride) >= 12) guestThought(guest, "ライドから見る景色がきれい", "景色がきれい", "positive", true);
       else guestThought(guest, `${tools[ride.type].label}が楽しかった`, "楽しかった", "positive", true);
 
-      if (!guest.spent && guest.hunger >= 55) {
-        const shopChoice = chooseShop(guest);
-        if (shopChoice) {
-          guest.goal = shopChoice.tile.object;
-          guest.goalType = "shop";
-          guest.path = findPath(guest.tile, shopChoice.pathTile);
-        }
-      }
+      const desiredKind = desiredShopKind(guest);
+      if (desiredKind) routeGuestToShop(guest, desiredKind, false);
       if (!guest.goal && guest.restroomNeed >= 70) {
         routeGuestToAmenity(guest, "toilet", { message: "ライドの後にトイレへ寄ろう", short: "トイレへ" });
       }
@@ -2649,14 +2788,20 @@ function snapshotObject(object) {
     saved.broken = !!object.broken;
     saved.price = Number(object.price ?? tools[object.type].defaultPrice);
   } else if (tools[object.type]?.shop) {
-    saved.stock = Number(object.stock ?? tools.kiosk.maxStock);
-    saved.maxStock = Number(object.maxStock ?? tools.kiosk.maxStock);
-    saved.price = Number(object.price ?? tools.kiosk.defaultPrice);
+    saved.stock = Number(object.stock ?? shopCapacityForDifficulty(state.difficulty, object.type));
+    saved.maxStock = Number(object.maxStock ?? shopCapacityForDifficulty(state.difficulty, object.type));
+    saved.price = Number(object.price ?? tools[object.type].defaultPrice);
     saved.autoRestock = !!object.autoRestock;
     saved.deliveryTimer = Number(object.deliveryTimer || 0);
     saved.pendingStock = Number(object.pendingStock || 0);
     saved.sales = Number(object.sales || 0);
     saved.lostSales = Number(object.lostSales || 0);
+    saved.visits = Number(object.visits || 0);
+    saved.priceRejects = Number(object.priceRejects || 0);
+    saved.revenue = Number(object.revenue || 0);
+    saved.supplyCost = Number(object.supplyCost || 0);
+    saved.recentInterest = Number(object.recentInterest || 0);
+    saved.recentSales = Number(object.recentSales || 0);
     saved.orders = Number(object.orders || 0);
     saved.deliveries = Number(object.deliveries || 0);
   } else if (tools[object.type]?.amenity) {
@@ -2684,7 +2829,7 @@ function restoreObject(saved) {
     };
   }
   if (tools[saved.type].shop) {
-    return createShop(saved);
+    return createShop(saved.type, saved);
   }
   if (tools[saved.type].amenity) {
     const maxFill = Number(saved.maxFill || tools[saved.type].maxFill || 0);
@@ -3012,10 +3157,13 @@ function computeStats() {
   ui.queue.textContent = queue;
   ui.guests.textContent = state.guests.length;
   const hungryGuests = state.guests.filter(guest => guest.hunger >= 66).length;
+  const thirstyGuests = state.guests.filter(guest => Number(guest.thirst || 0) >= 64).length;
   const tiredGuests = state.guests.filter(guest => guest.fatigue >= 72).length;
   const restroomGuests = state.guests.filter(guest => Number(guest.restroomNeed || 0) >= 70).length;
   ui.guestMoodSummary.textContent = restroomGuests
     ? `トイレ待ち ${restroomGuests}人`
+    : thirstyGuests
+      ? `のどの渇き ${thirstyGuests}人`
     : hungryGuests
     ? `空腹 ${hungryGuests}人`
     : tiredGuests
@@ -3043,6 +3191,28 @@ function computeStats() {
     : blockedOrders
       ? `資金不足 ${blockedOrders}店`
       : "配送待ちなし";
+  const shopPerformanceTotals = shops.reduce((total, shop) => {
+    const performance = shopPerformance(shop);
+    total.visits += performance.visits;
+    total.sales += performance.sales;
+    total.grossProfit += performance.grossProfit;
+    total.recentInterest += performance.recentInterest;
+    return total;
+  }, { visits: 0, sales: 0, grossProfit: 0, recentInterest: 0 });
+  const shopConversion = shopPerformanceTotals.visits > 0
+    ? shopPerformanceTotals.sales / shopPerformanceTotals.visits
+    : null;
+  ui.shopDemandStatus.textContent = !shops.length
+    ? "売店なし"
+    : shopPerformanceTotals.recentInterest >= 8
+      ? "強い"
+      : shopPerformanceTotals.recentInterest >= 3
+        ? "安定"
+        : "静か";
+  ui.shopConversion.textContent = shopConversion === null ? "--" : `${Math.round(shopConversion * 100)}%`;
+  ui.shopConversion.className = shopConversion !== null && shopConversion < .6 ? "warning" : "";
+  ui.shopGrossProfit.textContent = `${shopPerformanceTotals.grossProfit >= 0 ? "+" : "-"}$${Math.abs(Math.round(shopPerformanceTotals.grossProfit)).toLocaleString()}`;
+  ui.shopGrossProfit.className = shopPerformanceTotals.grossProfit >= 0 ? "positive" : "warning";
   ui.expenseTotal.textContent = `$${Math.round(expenses).toLocaleString()}`;
   ui.netTotal.textContent = `${net >= 0 ? "+" : "-"}$${Math.abs(Math.round(net)).toLocaleString()}`;
   ui.netTotal.classList.toggle("negative", net < 0);
@@ -3348,6 +3518,17 @@ function build(tile, options = {}) {
           routeGuestToRideOrExit(guest);
         }
       }
+      if (tools[tile.object.type]?.shop) {
+        const removedShop = tile.object;
+        for (const guest of state.guests.filter(candidate => candidate.goal === removedShop)) {
+          const desiredKind = guest.goalShopKind || shopKind(removedShop);
+          guest.goal = null;
+          guest.goalType = null;
+          guest.shopRejected = removedShop;
+          if (!routeGuestToShop(guest, desiredKind, false)) routeGuestToRideOrExit(guest);
+          guest.shopRejected = null;
+        }
+      }
       if (tools[tile.object.type]?.transit) {
         const mode = tile.object.transitMode || "bus";
         const network = transitNetwork(mode);
@@ -3390,7 +3571,7 @@ function build(tile, options = {}) {
     };
     state.rides.push(tile.object);
   } else if (tool.shop) {
-    tile.object = createShop();
+    tile.object = createShop(selectedTool);
   } else if (tool.amenity) {
     tile.object = {
       type: selectedTool,
@@ -3466,20 +3647,23 @@ function inspect(tile) {
     }
     else if (t.shop) {
       const stock = Number(tile.object.stock ?? 0);
-      const maxStock = Number(tile.object.maxStock ?? tools.kiosk.maxStock);
+      const maxStock = Number(tile.object.maxStock ?? shopCapacityForDifficulty(state.difficulty, tile.object.type));
       const pending = Number(tile.object.pendingStock || 0);
       const instantQuantity = Math.max(0, maxStock - stock - pending);
-      const restockCost = instantQuantity * SHOP_CONFIG.instantUnitCost;
-      const orderQuantity = Math.min(SHOP_CONFIG.deliverySize, Math.max(0, maxStock - stock));
-      const orderCost = orderQuantity * SHOP_CONFIG.autoUnitCost;
+      const restockCost = instantQuantity * shopUnitCost(tile.object, true);
+      const orderQuantity = Math.min(shopDeliverySize(tile.object), Math.max(0, maxStock - stock));
+      const orderCost = orderQuantity * shopUnitCost(tile.object);
       const stockPercent = Math.round(stock / Math.max(1, maxStock) * 100);
       const delivery = pending > 0
         ? `配送中 ${Math.ceil(tile.object.deliveryTimer)}秒・${pending}個`
         : tile.object.orderBlocked
           ? "仕入れ資金不足"
           : "配送待ちなし";
-      body = `在庫 ${stock}/${maxStock}、${delivery}。累計販売 ${Math.floor(tile.object.sales || 0)}個、品切れ損失 ${Math.floor(tile.object.lostSales || 0)}件。`;
-      controls = `<div class="shop-stock-meter"><i class="${stockPercent <= 20 ? "low" : ""}" style="width:${stockPercent}%"></i></div><div class="inline-economy"><span>商品価格</span><div class="stepper"><button data-action="shop-price-down" title="商品価格を下げる">−</button><b>$${tile.object.price}</b><button data-action="shop-price-up" title="商品価格を上げる">＋</button></div><button class="restock-btn" data-action="restock" ${restockCost <= 0 ? "disabled" : ""}>即時 $${restockCost}</button></div><div class="shop-actions"><button class="${tile.object.autoRestock ? "active" : ""}" data-action="shop-auto-toggle">自動発注 ${tile.object.autoRestock ? "ON" : "OFF"}</button><button data-action="shop-order" ${pending > 0 || orderQuantity <= 0 ? "disabled" : ""}>${orderQuantity}個発注 $${orderCost}</button></div>`;
+      const performance = shopPerformance(tile.object);
+      const conversion = performance.visits ? `${Math.round(performance.conversion * 100)}%` : "--";
+      const grossProfit = `${performance.grossProfit >= 0 ? "+" : "-"}$${Math.abs(Math.round(performance.grossProfit))}`;
+      body = `在庫 ${stock}/${maxStock}、${delivery}。来店 ${performance.visits}人、販売 ${performance.sales}個、成約率 ${conversion}、価格離脱 ${performance.priceRejects}件、品切れ ${performance.lostSales}件、仕入差引 ${grossProfit}。`;
+      controls = `<div class="shop-stock-meter"><i class="${stockPercent <= 20 ? "low" : ""}" style="width:${stockPercent}%"></i></div><p class="shop-insight ${performance.warning ? "warning" : ""}">${performance.insight}</p><div class="inline-economy"><span>商品価格</span><div class="stepper"><button data-action="shop-price-down" title="商品価格を下げる">−</button><b>$${tile.object.price}</b><button data-action="shop-price-up" title="商品価格を上げる">＋</button></div><button class="restock-btn" data-action="restock" ${restockCost <= 0 ? "disabled" : ""}>即時 $${restockCost}</button></div><div class="shop-actions"><button class="${tile.object.autoRestock ? "active" : ""}" data-action="shop-auto-toggle">自動発注 ${tile.object.autoRestock ? "ON" : "OFF"}</button><button data-action="shop-order" ${pending > 0 || orderQuantity <= 0 ? "disabled" : ""}>${orderQuantity}個発注 $${orderCost}</button></div>`;
     }
     else if (t.amenity === "bench") {
       body = `累計 ${Math.floor(tile.object.usage || 0)}回利用。疲れたゲストが通路から立ち寄り、休憩して元気を取り戻します。`;
@@ -3729,7 +3913,7 @@ function setDifficulty(mode, options = {}) {
   state.difficulty = mode;
   if (options.adjustFunds !== false && pristine) {
     state.money = DIFFICULTY_CONFIGS[mode].initialMoney;
-    for (const tile of shopTiles()) tile.object = createShop();
+    for (const tile of shopTiles()) tile.object = createShop(tile.object.type);
   }
   renderTutorial();
   computeStats();
@@ -3812,7 +3996,7 @@ function adjustSelectedPrice(delta) {
   const tool = tools[object?.type];
   if (!object || (!tool?.ride && !tool?.shop)) return;
   const min = tool.ride ? 0 : 1;
-  const max = tool.ride ? 30 : 20;
+  const max = tool.ride ? 30 : 24;
   object.price = clamp(Number(object.price ?? tool.defaultPrice) + delta, min, max);
   inspect(selectedTile);
   toast(`${tool.ride ? "乗車" : "商品"}料金を $${object.price} に設定しました`);
@@ -3821,16 +4005,17 @@ function adjustSelectedPrice(delta) {
 function restockSelectedKiosk() {
   const shop = selectedTile?.object;
   if (!tools[shop?.type]?.shop) return;
-  const maxStock = Number(shop.maxStock ?? tools.kiosk.maxStock);
+  const maxStock = Number(shop.maxStock ?? shopCapacityForDifficulty(state.difficulty, shop.type));
   const missing = Math.max(0, maxStock - Number(shop.stock ?? 0) - Number(shop.pendingStock || 0));
   if (!missing) return;
-  const cost = missing * SHOP_CONFIG.instantUnitCost;
+  const cost = missing * shopUnitCost(shop, true);
   if (state.money < cost) {
     toast("仕入れ資金が足りません");
     return;
   }
   state.money -= cost;
   state.finance.restockExpenses += cost;
+  shop.supplyCost = Number(shop.supplyCost || 0) + cost;
   shop.stock = Math.min(maxStock, Number(shop.stock || 0) + missing);
   inspect(selectedTile);
   computeStats();
@@ -4153,7 +4338,11 @@ window.parkDebug = {
       shopStock: shopTiles().reduce((sum, tile) => sum + Number(tile.object.stock || 0), 0),
       shopCapacity: shopTiles().reduce((sum, tile) => sum + Number(tile.object.maxStock || 0), 0),
       shopSales: shopTiles().reduce((sum, tile) => sum + Number(tile.object.sales || 0), 0),
+      shopVisits: shopTiles().reduce((sum, tile) => sum + Number(tile.object.visits || 0), 0),
+      shopPriceRejects: shopTiles().reduce((sum, tile) => sum + Number(tile.object.priceRejects || 0), 0),
+      shopGrossProfit: shopTiles().reduce((sum, tile) => sum + shopPerformance(tile.object).grossProfit, 0),
       shopDeliveries: shopTiles().reduce((sum, tile) => sum + Number(tile.object.deliveries || 0), 0),
+      shopTypes: Object.fromEntries(["food", "drink", "souvenir"].map(kind => [kind, shopTiles().filter(tile => shopKind(tile.object) === kind).length])),
       ratingScore: Math.round(rating.score),
       ratingStars: rating.stars,
       bestStars: state.progression.bestStars,
@@ -4186,6 +4375,14 @@ window.parkDebug = {
   orderSelectedShop,
   placeShopOrder,
   chooseShop,
+  shopKind,
+  desiredShopKind,
+  routeGuestToShop,
+  shopPriceTolerance,
+  shopPerformance,
+  shopCapacityForDifficulty,
+  shopDeliverySize,
+  shopUnitCost,
   buyFromShop,
   inspect,
   drawWorld,

@@ -553,6 +553,34 @@ h1 { margin: 0; font-size: 21px; }
 .shop-stock-summary b { color: var(--ink); }
 .shop-stock-summary > span:last-child { color: var(--teal); font-weight: 900; text-align: right; }
 
+.shop-market-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.shop-market-grid span {
+  min-width: 0;
+  padding: 6px;
+  background: rgba(38, 49, 63, .05);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 8px;
+  text-align: center;
+}
+
+.shop-market-grid b {
+  display: block;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 10px;
+}
+
+.shop-market-grid b.positive { color: var(--green); }
+.shop-market-grid b.warning { color: var(--coral); }
+
 .shop-stock-meter {
   height: 6px;
   margin-top: 7px;
@@ -566,6 +594,23 @@ h1 { margin: 0; font-size: 21px; }
 .shop-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 7px; }
 .shop-actions button { min-height: 32px; padding: 0 7px; font-size: 9px; }
 .shop-actions button.active { background: var(--teal); color: white; }
+
+.shop-insight {
+  margin: 7px 0 0;
+  padding: 6px 7px;
+  background: rgba(73, 171, 194, .1);
+  border-left: 3px solid var(--teal);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.shop-insight.warning {
+  background: rgba(239, 111, 97, .1);
+  border-left-color: var(--coral);
+  color: #91433e;
+}
 
 .difficulty-status {
   display: flex;
@@ -932,7 +977,7 @@ details img {
   .hero-card { grid-template-rows: 84px 22px; min-height: 116px; }
   .hero-card img { height: 84px; }
   .sidepanel { top: auto; right: 16px; bottom: 96px; width: 300px; max-height: 32vh; }
-  .palette { right: 16px; bottom: 76px; max-width: none; overflow-x: auto; }
+  .palette { right: 332px; bottom: 76px; max-width: none; overflow-x: auto; }
   .category-trigger { min-width: 84px; }
   .zoom-controls { left: 16px; right: auto; }
 }
