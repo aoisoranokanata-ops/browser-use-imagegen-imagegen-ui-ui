@@ -536,6 +536,67 @@ h1 { margin: 0; font-size: 21px; }
   font-size: 11px;
 }
 
+.marketing-panel {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(45, 59, 70, .09);
+}
+
+.marketing-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.marketing-heading > span strong,
+.marketing-heading > span small { display: block; }
+.marketing-heading > span strong { font-size: 11px; }
+.marketing-heading > span small { margin-top: 1px; color: var(--muted); font-size: 9px; }
+.marketing-heading > button { min-width: 28px; min-height: 28px; padding: 0; font-size: 15px; }
+
+.marketing-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.marketing-options button {
+  min-width: 0;
+  min-height: 38px;
+  padding: 5px 6px;
+  text-align: left;
+}
+
+.marketing-options button b,
+.marketing-options button small { display: block; }
+.marketing-options button b { font-size: 9px; }
+.marketing-options button small { margin-top: 2px; color: var(--muted); font-size: 8px; }
+.marketing-options button.active { background: var(--teal); color: white; }
+.marketing-options button.active small { color: rgba(255, 255, 255, .82); }
+
+.marketing-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.marketing-metrics span {
+  min-width: 0;
+  padding: 5px 3px;
+  background: rgba(49, 143, 132, .08);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 8px;
+  text-align: center;
+}
+
+.marketing-metrics b { display: block; margin-top: 2px; color: var(--ink); font-size: 9px; }
+.marketing-panel > p { margin: 6px 0 0; color: var(--muted); font-size: 8px; line-height: 1.4; }
+.marketing-panel > p.warning { color: #9a4540; }
+
 .shop-stock-summary {
   display: flex;
   align-items: center;

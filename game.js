@@ -92,6 +92,20 @@ const ui = {
   shopOpenStatus: document.getElementById("shopOpenStatus"),
   shopStaffStatus: document.getElementById("shopStaffStatus"),
   shopReputationStatus: document.getElementById("shopReputationStatus"),
+  marketingStatus: document.getElementById("marketingStatus"),
+  marketingFit: document.getElementById("marketingFit"),
+  marketingLeads: document.getElementById("marketingLeads"),
+  marketingResults: document.getElementById("marketingResults"),
+  marketingHint: document.getElementById("marketingHint"),
+  marketingFamily: document.getElementById("marketingFamily"),
+  marketingFamilyMeta: document.getElementById("marketingFamilyMeta"),
+  marketingThrill: document.getElementById("marketingThrill"),
+  marketingThrillMeta: document.getElementById("marketingThrillMeta"),
+  marketingScenic: document.getElementById("marketingScenic"),
+  marketingScenicMeta: document.getElementById("marketingScenicMeta"),
+  marketingFoodie: document.getElementById("marketingFoodie"),
+  marketingFoodieMeta: document.getElementById("marketingFoodieMeta"),
+  marketingCancel: document.getElementById("marketingCancel"),
   expenseTotal: document.getElementById("expenseTotal"),
   netTotal: document.getElementById("netTotal"),
   difficultyLabel: document.getElementById("difficultyLabel"),
@@ -154,6 +168,12 @@ const STAFF_MANAGEMENT_CONFIG = {
   resumeAt: 32,
   trainingCosts: { cleaner: 320, mechanic: 440 },
   wages: { cleaner: 35, mechanic: 45 }
+};
+const MARKETING_CAMPAIGNS = {
+  family: { label: "ファミリー", cost: 600, leads: 18, interval: .76, targetShare: .66 },
+  thrill: { label: "絶叫ファン", cost: 800, leads: 20, interval: .72, targetShare: .68 },
+  scenic: { label: "景観好き", cost: 500, leads: 16, interval: .8, targetShare: .64 },
+  foodie: { label: "グルメ層", cost: 550, leads: 18, interval: .78, targetShare: .66 }
 };
 const GUEST_ARCHETYPES = {
   family: { label: "子ども連れ", rideBias: { carousel: 12, teacups: 9, wheel: 4, coaster: -8 }, hungerRate: 1.15, thirstRate: 1.05, souvenirBias: 1.25, fatigueRate: 1.05 },
@@ -285,7 +305,15 @@ const state = {
     shopRevenue: 0,
     maintenanceExpenses: 0,
     staffExpenses: 0,
-    restockExpenses: 0
+    restockExpenses: 0,
+    marketingExpenses: 0
+  },
+  marketing: {
+    activeCampaign: null,
+    remainingLeads: 0,
+    attractedGuests: 0,
+    refusals: 0,
+    campaignsStarted: 0
   },
   staff: { cleaners: 1, mechanics: 1 },
   staffStats: { cleaningJobs: 0, repairJobs: 0 },
@@ -2007,6 +2035,67 @@ function updateShops(dt) {
   }
 }
 
+function activeMarketingCampaign() {
+  const type = state.marketing?.activeCampaign;
+  return MARKETING_CAMPAIGNS[type] && Number(state.marketing.remainingLeads || 0) > 0
+    ? { type, ...MARKETING_CAMPAIGNS[type] }
+    : null;
+}
+
+function marketingFit(type) {
+  const rides = state.rides.filter(ride => ride.open !== false && !ride.broken);
+  const amenities = state.tiles.map(tile => tile.object).filter(object => tools[object?.type]?.amenity);
+  const shops = shopTiles().map(tile => tile.object).filter(shop => shop.open !== false);
+  if (type === "family") {
+    const gentleRides = rides.filter(ride => ["carousel", "teacups", "wheel"].includes(ride.type)).length;
+    const toilets = amenities.filter(object => object.type === "toilet").length;
+    const benches = amenities.filter(object => object.type === "bench").length;
+    return clamp(gentleRides * 23 + toilets * 14 + benches * 5 + state.clean * .24, 0, 100);
+  }
+  if (type === "thrill") {
+    const thrillRides = rides.filter(ride => ride.type === "coaster").length;
+    const wheels = rides.filter(ride => ride.type === "wheel").length;
+    const popularity = rides.length ? rides.reduce((sum, ride) => sum + Number(ride.popularity ?? 55), 0) / rides.length : 0;
+    return clamp(thrillRides * 48 + wheels * 14 + popularity * .38, 0, 100);
+  }
+  if (type === "scenic") {
+    const scenicRides = rides.filter(ride => ["wheel", "carousel"].includes(ride.type)).length;
+    const plantTypes = new Set(state.tiles.map(tile => tile.object?.type).filter(typeName => ["tree", "shrub", "flower", "palm"].includes(typeName))).size;
+    return clamp(sceneryScore() * .48 + scenicRides * 9 + plantTypes * 7, 0, 100);
+  }
+  if (type === "foodie") {
+    const shopKinds = new Set(shops.map(shop => shopKind(shop))).size;
+    const stockRatio = shops.length
+      ? shops.reduce((sum, shop) => sum + Math.min(1, Number(shop.stock || 0) / Math.max(1, Number(shop.maxStock || 1))), 0) / shops.length
+      : 0;
+    const reputation = shops.length
+      ? shops.reduce((sum, shop) => sum + Number(shop.reputation ?? SHOP_MANAGEMENT_CONFIG.startingReputation), 0) / shops.length
+      : 0;
+    return clamp(shopKinds * 23 + stockRatio * 18 + reputation * .2, 0, 100);
+  }
+  return 0;
+}
+
+function marketingFitHint(type, fit = marketingFit(type)) {
+  if (!MARKETING_CAMPAIGNS[type]) return "客層を選んで集客を始めましょう。";
+  if (fit >= 75) return "設備との相性は良好です。高い満足と売上を期待できます。";
+  if (fit >= 50) return "受け入れ可能です。関連設備を増やすと満足度が安定します。";
+  const hints = {
+    family: "穏やかな遊具、トイレ、ベンチ、清潔さを整えましょう。",
+    thrill: "コースターや観覧車と、人気の高いライドが必要です。",
+    scenic: "植物の種類と景観値、景色を楽しめるライドを増やしましょう。",
+    foodie: "飲食店の種類、在庫、評判を整えてから宣伝しましょう。"
+  };
+  return hints[type];
+}
+
+function chooseGuestArchetype(campaignType = state.marketing?.activeCampaign) {
+  const campaign = MARKETING_CAMPAIGNS[campaignType];
+  if (campaign && Number(state.marketing?.remainingLeads || 0) > 0 && Math.random() < campaign.targetShare) return campaignType;
+  const archetypeKeys = Object.keys(GUEST_ARCHETYPES);
+  return archetypeKeys[Math.floor(Math.random() * archetypeKeys.length)];
+}
+
 function update(dt) {
   if (paused) return;
   spawnTimer += dt;
@@ -2015,7 +2104,8 @@ function update(dt) {
   const attraction = state.rides.reduce((sum, r) => sum + tools[r.type].appeal, 0);
   const transitStops = busStops().length;
   const admissionPressure = Math.max(0, state.admissionFee - 25) * .045;
-  const interval = Math.max(.65, 3.6 - attraction / 42 - state.round * .08 - transitStops * .14 + admissionPressure);
+  const campaignInterval = activeMarketingCampaign()?.interval || 1;
+  const interval = Math.max(.65, (3.6 - attraction / 42 - state.round * .08 - transitStops * .14 + admissionPressure) * campaignInterval);
   if (spawnTimer > interval && state.guests.length < 12 + state.round * 5) {
     spawnTimer = 0;
     spawnGuest();
@@ -2273,15 +2363,23 @@ function spawnGuest() {
 }
 
 function spawnGuestAt(startTile) {
+  const campaign = activeMarketingCampaign();
+  const campaignType = campaign?.type || null;
+  const archetype = chooseGuestArchetype(campaignType);
+  if (campaign) {
+    state.marketing.remainingLeads = Math.max(0, Number(state.marketing.remainingLeads || 0) - 1);
+    if (state.marketing.remainingLeads <= 0) state.marketing.activeCampaign = null;
+  }
   const refusalChance = clamp((state.admissionFee - 20) * .014, 0, .72);
   if (Math.random() < refusalChance) {
+    if (campaign) state.marketing.refusals = Math.max(0, Number(state.marketing.refusals || 0)) + 1;
     addGuestLog("来園希望", "入園料が高くて今日は見送った", "negative");
     return false;
   }
   const color = ["#ef6f61", "#49abc2", "#f1b84f", "#7acb72", "#8e6fb5"][Math.floor(Math.random() * 5)];
-  const archetypeKeys = Object.keys(GUEST_ARCHETYPES);
-  const archetype = archetypeKeys[Math.floor(Math.random() * archetypeKeys.length)];
   const profile = GUEST_ARCHETYPES[archetype];
+  const campaignMatch = campaignType === archetype;
+  const campaignFit = campaignMatch ? marketingFit(campaignType) : null;
   const guest = {
     id: ++guestSequence,
     pos: { x: startTile.x, y: startTile.y },
@@ -2304,7 +2402,8 @@ function spawnGuestAt(startTile) {
     purchases: { food: false, drink: false, souvenir: false },
     fatigue: (archetype === "family" ? 24 : 12) + Math.random() * 36,
     restroomNeed: (archetype === "family" ? 32 : 20) + Math.random() * 40,
-    satisfaction: 72,
+    satisfaction: campaignFit === null ? 72 : clamp(66 + (campaignFit - 50) * .24, 54, 82),
+    campaignType,
     thought: null,
     thoughtTimer: 0,
     thoughtCooldown: 1 + Math.random() * 3
@@ -2316,6 +2415,12 @@ function spawnGuestAt(startTile) {
   state.money += state.admissionFee;
   state.finance.admissionRevenue += state.admissionFee;
   state.guests.push(guest);
+  if (campaign) state.marketing.attractedGuests = Math.max(0, Number(state.marketing.attractedGuests || 0)) + 1;
+  if (campaignMatch && campaignFit < 50) {
+    guestThought(guest, `${MARKETING_CAMPAIGNS[campaignType].label}向けと聞いたけれど設備が物足りない`, "期待と違う", "negative", true);
+  } else if (campaignMatch && campaignFit >= 75) {
+    guestThought(guest, `${MARKETING_CAMPAIGNS[campaignType].label}向けの充実したパークでうれしい`, "期待どおり", "positive", true);
+  }
   return true;
 }
 
@@ -3075,7 +3180,7 @@ function rebuildRideList() {
 
 function getManagementMetrics() {
   const revenue = state.finance.admissionRevenue + state.finance.rideRevenue + state.finance.shopRevenue;
-  const expenses = state.finance.maintenanceExpenses + state.finance.staffExpenses + state.finance.restockExpenses;
+  const expenses = state.finance.maintenanceExpenses + state.finance.staffExpenses + state.finance.restockExpenses + state.finance.marketingExpenses;
   const busNetwork = transitNetwork("bus");
   const monorailNetwork = transitNetwork("monorail");
   const parkTrainNetwork = transitNetwork("park_train");
@@ -3243,6 +3348,7 @@ function saveGame() {
     admissionFee: state.admissionFee,
     difficulty: state.difficulty,
     finance: { ...state.finance },
+    marketing: { ...state.marketing },
     guestLog: state.guestLog,
     staff: { ...state.staff },
     staffStats: { ...state.staffStats },
@@ -3296,7 +3402,16 @@ function loadGame() {
       shopRevenue: Math.max(0, Number(save.finance?.shopRevenue) || 0),
       maintenanceExpenses: Math.max(0, Number(save.finance?.maintenanceExpenses) || 0),
       staffExpenses: Math.max(0, Number(save.finance?.staffExpenses) || 0),
-      restockExpenses: Math.max(0, Number(save.finance?.restockExpenses) || 0)
+      restockExpenses: Math.max(0, Number(save.finance?.restockExpenses) || 0),
+      marketingExpenses: Math.max(0, Number(save.finance?.marketingExpenses) || 0)
+    };
+    const savedCampaign = MARKETING_CAMPAIGNS[save.marketing?.activeCampaign] ? save.marketing.activeCampaign : null;
+    state.marketing = {
+      activeCampaign: savedCampaign,
+      remainingLeads: savedCampaign ? Math.max(0, Number(save.marketing?.remainingLeads) || 0) : 0,
+      attractedGuests: Math.max(0, Number(save.marketing?.attractedGuests) || 0),
+      refusals: Math.max(0, Number(save.marketing?.refusals) || 0),
+      campaignsStarted: Math.max(0, Number(save.marketing?.campaignsStarted) || 0)
     };
     state.guestLog = Array.isArray(save.guestLog)
       ? save.guestLog.slice(0, 6).map(entry => ({
@@ -3389,7 +3504,7 @@ function computeStats() {
     - queue * 1.8 - broken * 6 - admissionPenalty - debtPenalty - transitCrowdingPenalty;
   state.happy = clamp(joy, 18, 100);
   const revenue = state.finance.admissionRevenue + state.finance.rideRevenue + state.finance.shopRevenue;
-  const expenses = state.finance.maintenanceExpenses + state.finance.staffExpenses + state.finance.restockExpenses;
+  const expenses = state.finance.maintenanceExpenses + state.finance.staffExpenses + state.finance.restockExpenses + state.finance.marketingExpenses;
   const net = revenue - expenses;
   ui.money.textContent = `$${Math.round(state.money).toLocaleString()}`;
   ui.happy.textContent = `${Math.round(state.happy)}%`;
@@ -3504,8 +3619,14 @@ function computeStats() {
     financeHint = `売り切れの売店が${soldOutWithoutDelivery}店あります。売店を調べて発注するか、自動発注をオンにしましょう。`;
     financeWarning = true;
   }
+  const activeCampaignState = activeMarketingCampaign();
+  if (activeCampaignState && marketingFit(activeCampaignState.type) < 50) {
+    financeHint = `${activeCampaignState.label}向け広告に対して設備が不足しています。満足度低下に注意しましょう。`;
+    financeWarning = true;
+  }
   ui.financeHint.textContent = financeHint;
   ui.financeHint.classList.toggle("warning", financeWarning);
+  renderMarketingPanel();
   ui.brokenCount.textContent = broken;
   ui.conditionAverage.textContent = `${Math.round(averageCondition)}%`;
   const openRides = state.rides.filter(ride => ride.open !== false).length;
@@ -3530,6 +3651,31 @@ function computeStats() {
   renderTransitPanel();
   const managementMetrics = getManagementMetrics();
   renderProgressionPanel(calculateParkRating(managementMetrics), managementMetrics);
+}
+
+function renderMarketingPanel() {
+  const active = activeMarketingCampaign();
+  const buttonEntries = [
+    ["family", ui.marketingFamily, ui.marketingFamilyMeta],
+    ["thrill", ui.marketingThrill, ui.marketingThrillMeta],
+    ["scenic", ui.marketingScenic, ui.marketingScenicMeta],
+    ["foodie", ui.marketingFoodie, ui.marketingFoodieMeta]
+  ];
+  for (const [type, button, meta] of buttonEntries) {
+    const config = MARKETING_CAMPAIGNS[type];
+    const fit = Math.round(marketingFit(type));
+    meta.textContent = `$${config.cost}・適合${fit}`;
+    button.classList.toggle("active", active?.type === type);
+    button.setAttribute("aria-pressed", active?.type === type ? "true" : "false");
+    button.disabled = state.money < config.cost;
+  }
+  ui.marketingStatus.textContent = active ? `${active.label}向け配信中` : "未実施";
+  ui.marketingFit.textContent = active ? `${Math.round(marketingFit(active.type))}%` : "--";
+  ui.marketingLeads.textContent = active ? `${Math.ceil(state.marketing.remainingLeads)}人分` : "0";
+  ui.marketingResults.textContent = `${Math.floor(state.marketing.attractedGuests)} / 見送${Math.floor(state.marketing.refusals)}`;
+  ui.marketingHint.textContent = active ? marketingFitHint(active.type) : "客層を選んで集客を始めましょう。";
+  ui.marketingHint.classList.toggle("warning", !!active && marketingFit(active.type) < 50);
+  ui.marketingCancel.disabled = !active;
 }
 
 function renderTransitPanel() {
@@ -4286,6 +4432,33 @@ function trainStaff(role) {
   return true;
 }
 
+function startMarketingCampaign(type) {
+  const campaign = MARKETING_CAMPAIGNS[type];
+  if (!campaign) return false;
+  if (state.money < campaign.cost) {
+    toast("広告予算が足りません");
+    return false;
+  }
+  state.money -= campaign.cost;
+  state.finance.marketingExpenses += campaign.cost;
+  state.marketing.activeCampaign = type;
+  state.marketing.remainingLeads = campaign.leads;
+  state.marketing.campaignsStarted = Math.max(0, Number(state.marketing.campaignsStarted || 0)) + 1;
+  computeStats();
+  toast(`${campaign.label}向けキャンペーンを開始しました`);
+  return true;
+}
+
+function cancelMarketingCampaign() {
+  const campaign = activeMarketingCampaign();
+  if (!campaign) return false;
+  state.marketing.activeCampaign = null;
+  state.marketing.remainingLeads = 0;
+  computeStats();
+  toast(`${campaign.label}向けキャンペーンを停止しました`);
+  return true;
+}
+
 function adjustAdmissionFee(delta) {
   const next = clamp(state.admissionFee + delta, 0, 75);
   if (next === state.admissionFee) return;
@@ -4667,6 +4840,11 @@ ui.intervalMinus.addEventListener("click", () => adjustBusInterval(-1));
 ui.intervalPlus.addEventListener("click", () => adjustBusInterval(1));
 ui.admissionMinus.addEventListener("click", () => adjustAdmissionFee(-1));
 ui.admissionPlus.addEventListener("click", () => adjustAdmissionFee(1));
+ui.marketingFamily.addEventListener("click", () => startMarketingCampaign("family"));
+ui.marketingThrill.addEventListener("click", () => startMarketingCampaign("thrill"));
+ui.marketingScenic.addEventListener("click", () => startMarketingCampaign("scenic"));
+ui.marketingFoodie.addEventListener("click", () => startMarketingCampaign("foodie"));
+ui.marketingCancel.addEventListener("click", cancelMarketingCampaign);
 ui.routeList.addEventListener("click", event => {
   const stopId = event.target.closest("[data-stop-id]")?.dataset.stopId;
   const tile = transitStopTile(stopId);
@@ -4761,6 +4939,10 @@ window.parkDebug = {
       repairJobs: state.staffStats.repairJobs,
       operatingCost: operatingCost(),
       admissionFee: state.admissionFee,
+      activeCampaign: state.marketing.activeCampaign,
+      marketingLeads: Math.ceil(state.marketing.remainingLeads),
+      marketingAttracted: Math.floor(state.marketing.attractedGuests),
+      marketingRefusals: Math.floor(state.marketing.refusals),
       difficulty: state.difficulty,
       costFactor: difficultyCostFactor(),
       sentiment: Number(state.sentiment.toFixed(1)),
@@ -4808,6 +4990,13 @@ window.parkDebug = {
   saveGame,
   loadGame,
   adjustAdmissionFee,
+  startMarketingCampaign,
+  cancelMarketingCampaign,
+  activeMarketingCampaign,
+  marketingFit,
+  marketingFitHint,
+  chooseGuestArchetype,
+  renderMarketingPanel,
   adjustBusFleet,
   adjustBusInterval,
   toggleStopInRoute,

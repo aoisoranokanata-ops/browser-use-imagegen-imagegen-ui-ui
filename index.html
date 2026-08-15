@@ -159,7 +159,25 @@
           <span>入園料<b id="admissionRevenue">$0</b></span>
           <span>ライド<b id="rideRevenue">$0</b></span>
           <span>売店<b id="shopRevenue">$0</b></span>
-          <span>維持費・人件費<b id="expenseTotal">$0</b></span>
+          <span>支出合計<b id="expenseTotal">$0</b></span>
+        </div>
+        <div class="marketing-panel" aria-label="集客キャンペーン">
+          <div class="marketing-heading">
+            <span><strong>集客キャンペーン</strong><small id="marketingStatus">未実施</small></span>
+            <button id="marketingCancel" title="キャンペーンを停止" disabled>×</button>
+          </div>
+          <div class="marketing-options">
+            <button id="marketingFamily"><b>ファミリー</b><small id="marketingFamilyMeta">$600・適合--</small></button>
+            <button id="marketingThrill"><b>絶叫ファン</b><small id="marketingThrillMeta">$800・適合--</small></button>
+            <button id="marketingScenic"><b>景観好き</b><small id="marketingScenicMeta">$500・適合--</small></button>
+            <button id="marketingFoodie"><b>グルメ層</b><small id="marketingFoodieMeta">$550・適合--</small></button>
+          </div>
+          <div class="marketing-metrics">
+            <span>適合度<b id="marketingFit">--</b></span>
+            <span>残り反響<b id="marketingLeads">0</b></span>
+            <span>成果<b id="marketingResults">0 / 見送0</b></span>
+          </div>
+          <p id="marketingHint">客層を選んで集客を始めましょう。</p>
         </div>
         <div class="shop-stock-summary">
           <span>売店在庫 <b id="shopStockTotal">0 / 0</b></span>
