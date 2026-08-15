@@ -725,6 +725,54 @@ h1 { margin: 0; font-size: 21px; }
   text-align: center;
 }
 
+.shop-pricing-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.shop-pricing-summary > span {
+  min-width: 0;
+  padding: 6px 7px;
+  background: rgba(49, 143, 132, .08);
+  border-left: 3px solid var(--teal);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.shop-pricing-summary.warning > span {
+  background: rgba(239, 111, 97, .1);
+  border-left-color: var(--coral);
+}
+
+.shop-pricing-summary b { display: block; margin-top: 2px; color: var(--ink); font-size: 10px; }
+.shop-pricing-summary.warning > span b { color: #91433e; }
+.shop-pricing-summary button { min-height: 36px; padding: 0 6px; font-size: 9px; }
+
+.shop-price-guide {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.shop-price-guide span {
+  min-width: 0;
+  padding: 6px 4px;
+  background: rgba(241, 184, 79, .1);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 8px;
+  text-align: center;
+}
+
+.shop-price-guide b { display: block; margin-top: 2px; color: var(--ink); font-size: 10px; }
+.shop-price-guide b.warning { color: var(--coral); }
+.shop-price-guide b.positive { color: var(--green); }
+.shop-price-apply { min-width: 82px; padding: 0 7px; }
+
 .shop-stock-meter {
   height: 6px;
   margin-top: 7px;
@@ -850,6 +898,12 @@ h1 { margin: 0; font-size: 21px; }
 .inline-economy .stepper { grid-template-columns: 28px 42px 28px; }
 .inline-economy button { min-width: 28px; min-height: 28px; }
 .inline-economy .restock-btn { min-width: 88px; padding: 0 10px; }
+.inline-economy:has(.shop-price-apply) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.inline-economy:has(.shop-price-apply) .shop-price-apply,
+.inline-economy:has(.shop-price-apply) .restock-btn { width: 100%; min-width: 0; }
 
 .staff-panel {
   margin: 12px 0;

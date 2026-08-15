@@ -102,6 +102,9 @@ const ui = {
   shopOpenStatus: document.getElementById("shopOpenStatus"),
   shopStaffStatus: document.getElementById("shopStaffStatus"),
   shopReputationStatus: document.getElementById("shopReputationStatus"),
+  shopPricingSummary: document.getElementById("shopPricingSummary"),
+  shopPricingStatus: document.getElementById("shopPricingStatus"),
+  shopPricingAction: document.getElementById("shopPricingAction"),
   marketingStatus: document.getElementById("marketingStatus"),
   marketingFit: document.getElementById("marketingFit"),
   marketingLeads: document.getElementById("marketingLeads"),
@@ -517,6 +520,9 @@ function createShop(type = "kiosk", saved = null) {
     supplyCost: Math.max(0, Number(saved?.supplyCost || 0)),
     recentInterest: Math.max(0, Number(saved?.recentInterest || 0)),
     recentSales: Math.max(0, Number(saved?.recentSales || 0)),
+    recentPriceRejects: Math.max(0, Number(saved?.recentPriceRejects || 0)),
+    recentToleranceTotal: Math.max(0, Number(saved?.recentToleranceTotal || 0)),
+    recentToleranceWeight: Math.max(0, Number(saved?.recentToleranceWeight || 0)),
     orders: Math.max(0, Number(saved?.orders || 0)),
     deliveries: Math.max(0, Number(saved?.deliveries || 0)),
     orderBlocked: false
@@ -2081,6 +2087,9 @@ function updateShops(dt) {
     const demandDecay = Math.exp(-dt / 45);
     shop.recentInterest = Number(shop.recentInterest || 0) * demandDecay;
     shop.recentSales = Number(shop.recentSales || 0) * demandDecay;
+    shop.recentPriceRejects = Number(shop.recentPriceRejects || 0) * demandDecay;
+    shop.recentToleranceTotal = Number(shop.recentToleranceTotal || 0) * demandDecay;
+    shop.recentToleranceWeight = Number(shop.recentToleranceWeight || 0) * demandDecay;
     if (Number(shop.pendingStock || 0) > 0) {
       const previousSecond = Math.ceil(Number(shop.deliveryTimer || 0));
       shop.deliveryTimer = Math.max(0, Number(shop.deliveryTimer || 0) - dt);
@@ -2621,6 +2630,45 @@ function shopPriceTolerance(guest, shop = { type: "kiosk" }) {
   return clamp(Math.round(tools[shop.type]?.defaultPrice + needPremium + archetypePremium + servicePremium - sensitivityPenalty), 3, 22);
 }
 
+function shopRecommendedPrice(shop) {
+  if (!tools[shop?.type]?.shop) return 0;
+  const weight = Number(shop.recentToleranceWeight || 0);
+  const observed = weight >= .5
+    ? Number(shop.recentToleranceTotal || 0) / Math.max(.01, weight)
+    : Number(tools[shop.type].defaultPrice);
+  return clamp(Math.max(shopUnitCost(shop) + 1, Math.floor(observed)), 1, 24);
+}
+
+function shopPricingDiagnosis(shop) {
+  if (!tools[shop?.type]?.shop) return { status: "unknown", label: "--", recommended: 0, unitProfit: 0, rejectionRate: 0 };
+  const price = Number(shop.price ?? tools[shop.type].defaultPrice);
+  const recommended = shopRecommendedPrice(shop);
+  const rejectionRate = Number(shop.recentPriceRejects || 0) / Math.max(.5, Number(shop.recentInterest || 0));
+  const status = price > recommended
+    ? "high"
+    : price < recommended - 1
+      ? "low"
+      : "fair";
+  return {
+    status,
+    label: status === "high" ? "高め" : status === "low" ? "お買い得" : "適正",
+    recommended,
+    unitProfit: price - shopUnitCost(shop),
+    rejectionRate
+  };
+}
+
+function shopPricingIssues() {
+  return shopTiles()
+    .map(tile => ({ tile, diagnosis: shopPricingDiagnosis(tile.object) }))
+    .filter(entry => entry.tile.object.open !== false && entry.diagnosis.status === "high")
+    .sort((a, b) => {
+      const gapA = Number(a.tile.object.price || 0) - a.diagnosis.recommended;
+      const gapB = Number(b.tile.object.price || 0) - b.diagnosis.recommended;
+      return gapB - gapA || b.diagnosis.rejectionRate - a.diagnosis.rejectionRate;
+    });
+}
+
 function shopPerformance(shop) {
   const visits = Number(shop?.visits || 0);
   const sales = Number(shop?.sales || 0);
@@ -2629,20 +2677,23 @@ function shopPerformance(shop) {
   const conversion = visits > 0 ? sales / visits : 0;
   const grossProfit = Number(shop?.revenue || 0) - Number(shop?.supplyCost || 0);
   const recentInterest = Number(shop?.recentInterest || 0);
+  const pricing = shopPricingDiagnosis(shop);
   let insight = "来店データを集めています";
   let warning = false;
   if (lostSales >= 3 && lostSales > priceRejects) {
     insight = "品切れ損失が多めです。在庫と自動発注を確認";
     warning = true;
-  } else if (priceRejects >= 3 && priceRejects / Math.max(1, visits) >= .25) {
-    insight = "価格離脱が多めです。$1値下げして反応を比較";
+  } else if (pricing.status === "high" && (Number(shop.recentPriceRejects || 0) >= .5 || priceRejects >= 3)) {
+    insight = `商品価格が高めです。推奨 $${pricing.recommended} にすると価格離脱を減らせます`;
     warning = true;
+  } else if (pricing.status === "fair" && Number(shop.recentPriceRejects || 0) >= .5) {
+    insight = `推奨価格 $${pricing.recommended} に調整済みです。次の来店反応を観察しましょう`;
   } else if (visits >= 5 && conversion >= .82 && recentInterest >= 3 && Number(shop.price || 0) < 15) {
     insight = "需要と成約率が好調です。$1値上げの余地あり";
   } else if (visits >= 3) {
     insight = "価格と在庫のバランスは安定しています";
   }
-  return { visits, sales, priceRejects, lostSales, conversion, grossProfit, recentInterest, insight, warning };
+  return { visits, sales, priceRejects, lostSales, conversion, grossProfit, recentInterest, insight, warning, pricing };
 }
 
 function chooseAmenity(guest, amenityType) {
@@ -2858,6 +2909,7 @@ function localTileScenery(origin) {
 function buyFromShop(guest, shop) {
   const kind = shopKind(shop);
   if (guestPurchased(guest, kind)) return false;
+  if (guest.shopRejected === shop) return false;
   if (shop.open === false) {
     guest.shopRejected = shop;
     guestThought(guest, `${tools[shop.type].label}は休業中だった`, "休業中", "neutral", true);
@@ -2877,12 +2929,15 @@ function buyFromShop(guest, shop) {
     guestThought(guest, "売店の商品が売り切れていた", "売り切れだ", "negative", true);
     return false;
   }
+  shop.recentToleranceTotal = Number(shop.recentToleranceTotal || 0) + tolerance;
+  shop.recentToleranceWeight = Number(shop.recentToleranceWeight || 0) + 1;
   if (price > guest.budget || price > tolerance) {
     shop.priceRejects = Number(shop.priceRejects || 0) + 1;
+    shop.recentPriceRejects = Number(shop.recentPriceRejects || 0) + 1;
     shop.reputation = clamp(Number(shop.reputation ?? SHOP_MANAGEMENT_CONFIG.startingReputation) - .8, 0, 100);
     guest.shopRejected = shop;
     guest.satisfaction -= 5;
-    guestThought(guest, `商品が高く感じた（希望 $${tolerance}）`, "ちょっと高い", "negative", true);
+    guestThought(guest, `商品が高い。${tools[shop.type].label}なら $${tolerance} くらいがいい`, `$${tolerance}希望`, "negative", true);
     return false;
   }
   shop.stock--;
@@ -3221,6 +3276,9 @@ function snapshotObject(object) {
     saved.supplyCost = Number(object.supplyCost || 0);
     saved.recentInterest = Number(object.recentInterest || 0);
     saved.recentSales = Number(object.recentSales || 0);
+    saved.recentPriceRejects = Number(object.recentPriceRejects || 0);
+    saved.recentToleranceTotal = Number(object.recentToleranceTotal || 0);
+    saved.recentToleranceWeight = Number(object.recentToleranceWeight || 0);
     saved.orders = Number(object.orders || 0);
     saved.deliveries = Number(object.deliveries || 0);
   } else if (tools[object.type]?.amenity) {
@@ -3680,6 +3738,11 @@ function computeStats() {
   ui.shopOpenStatus.textContent = `営業 ${openShops.length} / ${shops.length}`;
   ui.shopStaffStatus.textContent = `店員 ${totalShopStaff}人`;
   ui.shopReputationStatus.textContent = shops.length ? `平均評判 ${Math.round(averageShopReputation)}` : "評判 --";
+  const pricingIssues = shopPricingIssues();
+  ui.shopPricingStatus.textContent = pricingIssues.length ? `${pricingIssues.length}店が高め` : shops.length ? "全店適正" : "売店なし";
+  ui.shopPricingSummary.classList.toggle("warning", pricingIssues.length > 0);
+  ui.shopPricingAction.disabled = pricingIssues.length === 0;
+  ui.shopPricingAction.textContent = pricingIssues.length ? `${pricingIssues.length}店を確認` : "高値店なし";
   ui.expenseTotal.textContent = `$${Math.round(expenses).toLocaleString()}`;
   ui.netTotal.textContent = `${net >= 0 ? "+" : "-"}$${Math.abs(Math.round(net)).toLocaleString()}`;
   ui.netTotal.classList.toggle("negative", net < 0);
@@ -4254,8 +4317,10 @@ function inspect(tile) {
       const reputation = Math.round(Number(tile.object.reputation ?? SHOP_MANAGEMENT_CONFIG.startingReputation));
       const staffCost = tile.object.open === false ? 0 : Math.round(staff * shopStaffWage(tile.object) * difficultyCostFactor());
       const upgradeCost = shopUpgradeCost(tile.object);
+      const pricing = performance.pricing;
+      const pricingClass = pricing.status === "high" ? "warning" : pricing.status === "fair" ? "positive" : "";
       body = `${tile.object.open === false ? "休業中" : "営業中"}。在庫 ${stock}/${maxStock}、${delivery}。来店 ${performance.visits}人、販売 ${performance.sales}個、成約率 ${conversion}、価格離脱 ${performance.priceRejects}件、品切れ ${performance.lostSales}件、仕入差引 ${grossProfit}。`;
-      controls = `<div class="shop-stock-meter"><i class="${stockPercent <= 20 ? "low" : ""}" style="width:${stockPercent}%"></i></div><div class="shop-management-grid"><span>店舗レベル<b>Lv.${level}</b></span><span>評判<b>${reputation}</b></span><span>店員費 / 精算<b>$${staffCost}</b></span></div><p class="shop-insight ${performance.warning ? "warning" : ""}">${performance.insight}</p><div class="inline-economy"><span>商品価格</span><div class="stepper"><button data-action="shop-price-down" title="商品価格を下げる">−</button><b>$${tile.object.price}</b><button data-action="shop-price-up" title="商品価格を上げる">＋</button></div><button class="restock-btn" data-action="restock" ${restockCost <= 0 ? "disabled" : ""}>即時 $${restockCost}</button></div><div class="shop-actions"><button class="${tile.object.autoRestock ? "active" : ""}" data-action="shop-auto-toggle">自動発注 ${tile.object.autoRestock ? "ON" : "OFF"}</button><button data-action="shop-order" ${pending > 0 || orderQuantity <= 0 ? "disabled" : ""}>${orderQuantity}個発注 $${orderCost}</button></div><div class="shop-staff-stepper"><button data-action="shop-staff-down" title="店員を減らす" ${staff <= 1 ? "disabled" : ""}>−</button><span>店員 ${staff}人</span><button data-action="shop-staff-up" title="店員を増やす" ${staff >= SHOP_MANAGEMENT_CONFIG.maxStaff ? "disabled" : ""}>＋</button></div><div class="shop-development-actions"><button class="${tile.object.open !== false ? "active" : ""}" data-action="shop-open-toggle">${tile.object.open === false ? "営業を再開" : "休業する"}</button><button data-action="shop-upgrade" ${upgradeCost <= 0 ? "disabled" : ""}>${upgradeCost > 0 ? `Lv.${level + 1}改装 $${upgradeCost}` : "改装完了"}</button></div>`;
+      controls = `<div class="shop-stock-meter"><i class="${stockPercent <= 20 ? "low" : ""}" style="width:${stockPercent}%"></i></div><div class="shop-management-grid"><span>店舗レベル<b>Lv.${level}</b></span><span>評判<b>${reputation}</b></span><span>店員費 / 精算<b>$${staffCost}</b></span></div><p class="shop-insight ${performance.warning ? "warning" : ""}">${performance.insight}</p><div class="shop-price-guide"><span>価格評価<b class="${pricingClass}">${pricing.label}</b></span><span>推奨価格<b>$${pricing.recommended}</b></span><span>粗利 / 個<b>$${pricing.unitProfit}</b></span></div><div class="inline-economy"><span>商品価格</span><div class="stepper"><button data-action="shop-price-down" title="商品価格を下げる">−</button><b>$${tile.object.price}</b><button data-action="shop-price-up" title="商品価格を上げる">＋</button></div><button class="shop-price-apply" data-action="shop-price-recommended" ${Number(tile.object.price) === pricing.recommended ? "disabled" : ""}>推奨 $${pricing.recommended}</button><button class="restock-btn" data-action="restock" ${restockCost <= 0 ? "disabled" : ""}>即時 $${restockCost}</button></div><div class="shop-actions"><button class="${tile.object.autoRestock ? "active" : ""}" data-action="shop-auto-toggle">自動発注 ${tile.object.autoRestock ? "ON" : "OFF"}</button><button data-action="shop-order" ${pending > 0 || orderQuantity <= 0 ? "disabled" : ""}>${orderQuantity}個発注 $${orderCost}</button></div><div class="shop-staff-stepper"><button data-action="shop-staff-down" title="店員を減らす" ${staff <= 1 ? "disabled" : ""}>−</button><span>店員 ${staff}人</span><button data-action="shop-staff-up" title="店員を増やす" ${staff >= SHOP_MANAGEMENT_CONFIG.maxStaff ? "disabled" : ""}>＋</button></div><div class="shop-development-actions"><button class="${tile.object.open !== false ? "active" : ""}" data-action="shop-open-toggle">${tile.object.open === false ? "営業を再開" : "休業する"}</button><button data-action="shop-upgrade" ${upgradeCost <= 0 ? "disabled" : ""}>${upgradeCost > 0 ? `Lv.${level + 1}改装 $${upgradeCost}` : "改装完了"}</button></div>`;
     }
     else if (t.amenity === "bench") {
       body = `累計 ${Math.floor(tile.object.usage || 0)}回利用。疲れたゲストが通路から立ち寄り、休憩して元気を取り戻します。`;
@@ -4645,7 +4710,37 @@ function adjustSelectedPrice(delta) {
   const max = tool.ride ? 30 : 24;
   object.price = clamp(Number(object.price ?? tool.defaultPrice) + delta, min, max);
   inspect(selectedTile);
+  computeStats();
   toast(`${tool.ride ? "乗車" : "商品"}料金を $${object.price} に設定しました`);
+}
+
+function applySelectedShopRecommendedPrice() {
+  const shop = selectedTile?.object;
+  if (!tools[shop?.type]?.shop) return false;
+  const recommended = shopRecommendedPrice(shop);
+  if (Number(shop.price) === recommended) {
+    toast("商品価格はすでに推奨範囲です");
+    return false;
+  }
+  shop.price = recommended;
+  inspect(selectedTile);
+  computeStats();
+  toast(`商品価格を推奨の $${recommended} に調整しました`);
+  return true;
+}
+
+function focusHighestPricedShop() {
+  const issue = shopPricingIssues()[0];
+  if (!issue) {
+    toast("高めの商品価格はありません");
+    return false;
+  }
+  const point = iso(issue.tile.x + .5, issue.tile.y + .5);
+  camera.x += innerWidth * .42 - point.x;
+  camera.y += innerHeight * .48 - point.y;
+  inspect(issue.tile);
+  toast(`${tools[issue.tile.object.type].label}を確認：推奨 $${issue.diagnosis.recommended}`);
+  return true;
 }
 
 function toggleSelectedRideOpen() {
@@ -5015,6 +5110,7 @@ ui.marketingThrill.addEventListener("click", () => startMarketingCampaign("thril
 ui.marketingScenic.addEventListener("click", () => startMarketingCampaign("scenic"));
 ui.marketingFoodie.addEventListener("click", () => startMarketingCampaign("foodie"));
 ui.marketingCancel.addEventListener("click", cancelMarketingCampaign);
+ui.shopPricingAction.addEventListener("click", focusHighestPricedShop);
 ui.analysisNormal.addEventListener("click", () => setAnalysisMode("normal"));
 ui.analysisCrowding.addEventListener("click", () => setAnalysisMode("crowding"));
 ui.analysisHygiene.addEventListener("click", () => setAnalysisMode("hygiene"));
@@ -5028,6 +5124,7 @@ ui.selected.addEventListener("click", event => {
   const action = event.target.closest("[data-action]")?.dataset.action;
   if (action === "ride-price-down" || action === "shop-price-down") adjustSelectedPrice(-1);
   if (action === "ride-price-up" || action === "shop-price-up") adjustSelectedPrice(1);
+  if (action === "shop-price-recommended") applySelectedShopRecommendedPrice();
   if (action === "restock") restockSelectedKiosk();
   if (action === "shop-auto-toggle") toggleSelectedShopAutoRestock();
   if (action === "shop-order") orderSelectedShop();
@@ -5149,6 +5246,7 @@ window.parkDebug = {
       shopSales: shopTiles().reduce((sum, tile) => sum + Number(tile.object.sales || 0), 0),
       shopVisits: shopTiles().reduce((sum, tile) => sum + Number(tile.object.visits || 0), 0),
       shopPriceRejects: shopTiles().reduce((sum, tile) => sum + Number(tile.object.priceRejects || 0), 0),
+      overpricedShops: shopPricingIssues().length,
       shopGrossProfit: shopTiles().reduce((sum, tile) => sum + shopPerformance(tile.object).grossProfit, 0),
       shopDeliveries: shopTiles().reduce((sum, tile) => sum + Number(tile.object.deliveries || 0), 0),
       shopTypes: Object.fromEntries(["food", "drink", "souvenir"].map(kind => [kind, shopTiles().filter(tile => shopKind(tile.object) === kind).length])),
@@ -5222,6 +5320,9 @@ window.parkDebug = {
   desiredShopKind,
   routeGuestToShop,
   shopPriceTolerance,
+  shopRecommendedPrice,
+  shopPricingDiagnosis,
+  shopPricingIssues,
   shopPerformance,
   shopCapacityForDifficulty,
   shopDeliverySize,
@@ -5230,6 +5331,8 @@ window.parkDebug = {
   shopUpgradeCost,
   shopCapacityAtLevel,
   buyFromShop,
+  applySelectedShopRecommendedPrice,
+  focusHighestPricedShop,
   inspect,
   drawWorld,
   update,

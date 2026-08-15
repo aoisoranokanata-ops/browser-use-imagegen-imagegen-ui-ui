@@ -347,6 +347,20 @@ assert.equal(debug.buyFromShop(costlyMealGuest, kiosk), false, "price-sensitive 
 assert.equal(kiosk.stock, stockBeforePriceRefusal);
 assert.equal(kiosk.priceRejects, 1);
 assert.ok(debug.shopPriceTolerance(costlyMealGuest) < kiosk.price);
+assert.equal(kiosk.recentPriceRejects, 1);
+assert.equal(kiosk.recentToleranceWeight, 1);
+const visitsAfterPriceRefusal = kiosk.visits;
+assert.equal(debug.buyFromShop(costlyMealGuest, kiosk), false, "a guest should not repeat the same rejected purchase");
+assert.equal(kiosk.visits, visitsAfterPriceRefusal);
+assert.equal(kiosk.priceRejects, 1);
+const recommendedMealPrice = debug.shopRecommendedPrice(kiosk);
+assert.ok(recommendedMealPrice < kiosk.price, "guest tolerance should produce a lower recommended price");
+assert.equal(debug.shopPricingDiagnosis(kiosk).status, "high");
+debug.inspect(state.tiles.find(tile => tile.object === kiosk));
+assert.equal(debug.applySelectedShopRecommendedPrice(), true);
+assert.equal(kiosk.price, recommendedMealPrice);
+assert.equal(debug.shopPricingDiagnosis(kiosk).status, "fair");
+assert.match(debug.shopPerformance(kiosk).insight, /推奨価格/);
 const hungryFoodie = {
   spent: false,
   budget: 50,
@@ -368,6 +382,7 @@ assert.equal(shopPerformanceBeforeSave.conversion, .5);
 assert.equal(shopPerformanceBeforeSave.grossProfit, kiosk.revenue - kiosk.supplyCost);
 const savedShopStock = kiosk.stock;
 const savedSupplyCost = kiosk.supplyCost;
+const savedRecentToleranceTotal = kiosk.recentToleranceTotal;
 debug.buildAt(7, 12, "drink_stand");
 debug.buildAt(9, 10, "souvenir_shop");
 const drinkStand = state.tiles.find(tile => tile.x === 7 && tile.y === 12).object;
@@ -446,6 +461,9 @@ assert.equal(loadedManagedRide.maintenancePolicy, "balanced");
 assert.equal(debug.rideCapacity(loadedManagedRide), 9);
 assert.equal(loadedKiosk.visits, 2);
 assert.equal(loadedKiosk.priceRejects, 1);
+assert.equal(loadedKiosk.recentPriceRejects, 1);
+assert.equal(loadedKiosk.recentToleranceWeight, 2);
+assert.equal(loadedKiosk.recentToleranceTotal, savedRecentToleranceTotal);
 assert.equal(loadedKiosk.revenue, 9);
 assert.equal(loadedKiosk.supplyCost, savedSupplyCost);
 const loadedDrinkStand = state.tiles.find(tile => tile.object?.type === "drink_stand").object;
@@ -903,6 +921,9 @@ delete legacyKiosk.revenue;
 delete legacyKiosk.supplyCost;
 delete legacyKiosk.recentInterest;
 delete legacyKiosk.recentSales;
+delete legacyKiosk.recentPriceRejects;
+delete legacyKiosk.recentToleranceTotal;
+delete legacyKiosk.recentToleranceWeight;
 delete legacyKiosk.open;
 delete legacyKiosk.staff;
 delete legacyKiosk.level;
@@ -921,6 +942,8 @@ assert.equal(migratedKiosk.maxStock, 60, "legacy beginner shops should receive t
 assert.equal(migratedKiosk.autoRestock, true);
 assert.equal(migratedKiosk.visits, 0);
 assert.equal(migratedKiosk.priceRejects, 0);
+assert.equal(migratedKiosk.recentPriceRejects, 0);
+assert.equal(migratedKiosk.recentToleranceWeight, 0);
 assert.equal(migratedKiosk.revenue, 0);
 assert.equal(migratedKiosk.supplyCost, 0);
 assert.equal(migratedKiosk.open, true);
