@@ -9,6 +9,16 @@ const ui = {
   day: document.getElementById("day"),
   round: document.getElementById("round"),
   selected: document.getElementById("selected"),
+  analysisStatus: document.getElementById("analysisStatus"),
+  analysisNormal: document.getElementById("analysisNormal"),
+  analysisCrowding: document.getElementById("analysisCrowding"),
+  analysisHygiene: document.getElementById("analysisHygiene"),
+  analysisSatisfaction: document.getElementById("analysisSatisfaction"),
+  analysisMetricA: document.getElementById("analysisMetricA"),
+  analysisMetricB: document.getElementById("analysisMetricB"),
+  analysisMetricC: document.getElementById("analysisMetricC"),
+  analysisLegend: document.getElementById("analysisLegend"),
+  analysisHint: document.getElementById("analysisHint"),
   toast: document.getElementById("toast"),
   growthBar: document.getElementById("growthBar"),
   loadBar: document.getElementById("loadBar"),
@@ -272,6 +282,7 @@ let mouse = { x: 0, y: 0, down: false, moved: false, mode: null, sx: 0, sy: 0, c
 let hovered = null;
 let selectedTile = null;
 let selectedTool = "inspect";
+let analysisMode = "normal";
 let selectedHero = localStorage.getItem("parkHero") || "male";
 let paused = false;
 let pausedBeforeReport = false;
@@ -367,7 +378,7 @@ const state = {
 function makeTile(x, y) {
   const pond = x > 20 && y > 18 && x + y < 48;
   const baseTerrain = pond ? "water" : "grass";
-  return { x, y, terrain: baseTerrain, baseTerrain, object: null, path: false, transitTrack: null, litter: 0 };
+  return { x, y, terrain: baseTerrain, baseTerrain, object: null, path: false, transitTrack: null, litter: 0, traffic: 0, moodTotal: 0, moodWeight: 0 };
 }
 
 for (let y = 0; y < H; y++) {
@@ -632,6 +643,58 @@ function diamond(cx, cy, fill, stroke = colors.edge) {
   ctx.stroke();
 }
 
+function tileHygieneRisk(tile) {
+  if (!tile) return 0;
+  const bin = tools[tile.object?.type]?.amenity === "bin" ? tile.object : null;
+  const binRisk = bin ? Number(bin.fill || 0) / Math.max(1, Number(bin.maxFill || tools.trash_bin.maxFill || 24)) * 70 : 0;
+  const nearbyLitter = neighbors(tile).reduce((sum, neighbor) => sum + Number(neighbor.litter || 0), 0) * 5;
+  return clamp(Number(tile.litter || 0) * 24 + binRisk + nearbyLitter, 0, 100);
+}
+
+function tileRecentSatisfaction(tile) {
+  const weight = Number(tile?.moodWeight || 0);
+  return weight > .04 ? clamp(Number(tile.moodTotal || 0) / weight, 0, 100) : null;
+}
+
+function analysisDrawScale() {
+  return {
+    maxTraffic: Math.max(.1, ...state.tiles.map(tile => Number(tile.traffic || 0)))
+  };
+}
+
+function analysisTileValue(tile, mode = analysisMode, scale = analysisDrawScale()) {
+  if (mode === "crowding") return tile.path && Number(tile.traffic || 0) > .02
+    ? clamp(Number(tile.traffic || 0) / scale.maxTraffic, 0, 1)
+    : null;
+  if (mode === "hygiene") return tile.path || Number(tile.litter || 0) > 0 || tools[tile.object?.type]?.amenity === "bin"
+    ? tileHygieneRisk(tile) / 100
+    : null;
+  if (mode === "satisfaction") {
+    const satisfaction = tileRecentSatisfaction(tile);
+    return satisfaction === null ? null : satisfaction / 100;
+  }
+  return null;
+}
+
+function analysisTileColor(mode, value) {
+  if (value === null) return null;
+  if (mode === "satisfaction") {
+    if (value < .6) return "rgba(239,111,97,.48)";
+    if (value < .76) return "rgba(241,184,79,.38)";
+    return "rgba(102,184,107,.34)";
+  }
+  if (value < .34) return "rgba(102,184,107,.2)";
+  if (value < .68) return "rgba(241,184,79,.36)";
+  return "rgba(239,111,97,.48)";
+}
+
+function drawAnalysisOverlay(tile, point, scale) {
+  const value = analysisTileValue(tile, analysisMode, scale);
+  const fill = analysisTileColor(analysisMode, value);
+  if (!fill) return;
+  diamond(point.x, point.y, fill, "rgba(255,255,255,.16)");
+}
+
 function drawWorld() {
   const grad = ctx.createLinearGradient(0, 0, 0, innerHeight);
   grad.addColorStop(0, "#bfead9");
@@ -639,6 +702,7 @@ function drawWorld() {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, innerWidth, innerHeight);
 
+  const analysisScale = analysisDrawScale();
   for (const tile of state.tiles) {
     const p = iso(tile.x, tile.y);
     let fill = (tile.x + tile.y) % 2 ? colors.grassA : colors.grassB;
@@ -647,6 +711,7 @@ function drawWorld() {
     diamond(p.x, p.y, fill);
     if (tile.path) drawPathTrim(p.x, p.y);
     if (tile.terrain === "water") drawWater(p.x, p.y);
+    drawAnalysisOverlay(tile, p, analysisScale);
     if (tile.litter > 0.5) drawLitter(p.x, p.y, tile.litter);
     if (tile.transitTrack === "monorail") drawMonorailTrack(tile);
     if (tile.transitTrack === "park_train") drawParkTrainTrack(tile);
@@ -2096,6 +2161,20 @@ function chooseGuestArchetype(campaignType = state.marketing?.activeCampaign) {
   return archetypeKeys[Math.floor(Math.random() * archetypeKeys.length)];
 }
 
+function updateAnalysisSignals(dt) {
+  const decay = Math.exp(-dt / 35);
+  for (const tile of state.tiles) {
+    tile.traffic = Math.max(0, Number(tile.traffic || 0) * decay);
+    tile.moodTotal = Math.max(0, Number(tile.moodTotal || 0) * decay);
+    tile.moodWeight = Math.max(0, Number(tile.moodWeight || 0) * decay);
+  }
+  for (const guest of state.guests) {
+    if (!guest.tile || guest.done) continue;
+    guest.tile.moodTotal += clamp(Number(guest.satisfaction ?? 72), 0, 100) * dt;
+    guest.tile.moodWeight += dt;
+  }
+}
+
 function update(dt) {
   if (paused) return;
   spawnTimer += dt;
@@ -2117,6 +2196,7 @@ function update(dt) {
   for (const ride of state.rides) updateRide(ride, dt);
   updateStaffAgents(dt);
   for (const guest of state.guests) updateGuest(guest, dt);
+  updateAnalysisSignals(dt);
   if (incomeTimer > 3.2) {
     incomeTimer = 0;
     const looseLitter = state.tiles.reduce((sum, tile) => sum + Number(tile.litter || 0), 0);
@@ -2415,6 +2495,7 @@ function spawnGuestAt(startTile) {
   state.money += state.admissionFee;
   state.finance.admissionRevenue += state.admissionFee;
   state.guests.push(guest);
+  startTile.traffic = Number(startTile.traffic || 0) + .5;
   if (campaign) state.marketing.attractedGuests = Math.max(0, Number(state.marketing.attractedGuests || 0)) + 1;
   if (campaignMatch && campaignFit < 50) {
     guestThought(guest, `${MARKETING_CAMPAIGNS[campaignType].label}向けと聞いたけれど設備が物足りない`, "期待と違う", "negative", true);
@@ -2748,6 +2829,7 @@ function updateGuest(g, dt) {
     g.pos.x = next.x;
     g.pos.y = next.y;
     g.tile = next;
+    next.traffic = Number(next.traffic || 0) + 1;
     g.path.shift();
   } else {
     g.pos.x += dx / dist * step;
@@ -3338,6 +3420,7 @@ function saveGame() {
     version: 1,
     savedAt: Date.now(),
     selectedHero,
+    analysisMode,
     money: state.money,
     clean: state.clean,
     happy: state.happy,
@@ -3368,6 +3451,9 @@ function saveGame() {
       path: tile.path,
       transitTrack: tile.transitTrack,
       litter: tile.litter,
+      traffic: tile.traffic,
+      moodTotal: tile.moodTotal,
+      moodWeight: tile.moodWeight,
       object: snapshotObject(tile.object)
     }))
   };
@@ -3396,6 +3482,7 @@ function loadGame() {
     state.sentiment = clamp(Number(save.sentiment) || 0, -20, 20);
     state.admissionFee = clamp(Number(save.admissionFee ?? 25), 0, 75);
     state.difficulty = DIFFICULTY_CONFIGS[save.difficulty] ? save.difficulty : "standard";
+    analysisMode = ["normal", "crowding", "hygiene", "satisfaction"].includes(save.analysisMode) ? save.analysisMode : "normal";
     state.finance = {
       admissionRevenue: Math.max(0, Number(save.finance?.admissionRevenue) || 0),
       rideRevenue: Math.max(0, Number(save.finance?.rideRevenue) || 0),
@@ -3453,6 +3540,9 @@ function loadGame() {
       tile.path = !!savedTile.path;
       tile.transitTrack = ["monorail", "park_train"].includes(savedTile.transitTrack) ? savedTile.transitTrack : null;
       tile.litter = Math.max(0, Number(savedTile.litter) || 0);
+      tile.traffic = Math.max(0, Number(savedTile.traffic) || 0);
+      tile.moodTotal = Math.max(0, Number(savedTile.moodTotal) || 0);
+      tile.moodWeight = Math.max(0, Number(savedTile.moodWeight) || 0);
       tile.object = restoreObject(savedTile.object);
     });
     restoreTransitState(save.transit);
@@ -3626,6 +3716,7 @@ function computeStats() {
   }
   ui.financeHint.textContent = financeHint;
   ui.financeHint.classList.toggle("warning", financeWarning);
+  renderAnalysisPanel();
   renderMarketingPanel();
   ui.brokenCount.textContent = broken;
   ui.conditionAverage.textContent = `${Math.round(averageCondition)}%`;
@@ -3651,6 +3742,82 @@ function computeStats() {
   renderTransitPanel();
   const managementMetrics = getManagementMetrics();
   renderProgressionPanel(calculateParkRating(managementMetrics), managementMetrics);
+}
+
+function analysisTileLabel(tile) {
+  if (!tile) return "--";
+  if (tile === entrance) return "入口";
+  if (tile.object?.type && tools[tile.object.type]?.label) return tools[tile.object.type].label;
+  if (tile.path) return `通路 ${tile.x},${tile.y}`;
+  return `区画 ${tile.x},${tile.y}`;
+}
+
+function getAnalysisMetrics(mode = analysisMode) {
+  if (mode === "crowding") {
+    const paths = state.tiles.filter(tile => tile.path && Number(tile.traffic || 0) > .02);
+    const hottest = [...paths].sort((a, b) => Number(b.traffic || 0) - Number(a.traffic || 0))[0] || null;
+    const maxTraffic = Number(hottest?.traffic || 0);
+    return {
+      hotspot: analysisTileLabel(hottest),
+      warnings: maxTraffic > 0 ? paths.filter(tile => Number(tile.traffic || 0) >= maxTraffic * .65).length : 0,
+      indicator: `通行 ${Math.round(paths.reduce((sum, tile) => sum + Number(tile.traffic || 0), 0))}`,
+      hint: maxTraffic > 8 ? "赤い通路の分岐を増やし、人気施設への流れを分散しましょう。" : "通行量は安定しています。赤くなる区画を観察しましょう。"
+    };
+  }
+  if (mode === "hygiene") {
+    const ranked = state.tiles.map(tile => ({ tile, risk: tileHygieneRisk(tile) })).filter(entry => entry.risk > 0).sort((a, b) => b.risk - a.risk);
+    return {
+      hotspot: analysisTileLabel(ranked[0]?.tile),
+      warnings: ranked.filter(entry => entry.risk >= 35).length,
+      indicator: `清潔 ${Math.round(state.clean)}%`,
+      hint: ranked.some(entry => entry.risk >= 60) ? "赤い区画のごみ箱を増やすか、清掃員の負荷を見直しましょう。" : "衛生状態は安定しています。黄色い区画を早めに整備しましょう。"
+    };
+  }
+  if (mode === "satisfaction") {
+    const sampled = state.tiles.map(tile => ({ tile, satisfaction: tileRecentSatisfaction(tile) })).filter(entry => entry.satisfaction !== null).sort((a, b) => a.satisfaction - b.satisfaction);
+    const average = state.guests.length
+      ? state.guests.reduce((sum, guest) => sum + clamp(Number(guest.satisfaction ?? 72), 0, 100), 0) / state.guests.length
+      : 72;
+    return {
+      hotspot: analysisTileLabel(sampled[0]?.tile),
+      warnings: sampled.filter(entry => entry.satisfaction < 60).length,
+      indicator: `平均 ${Math.round(average)}%`,
+      hint: sampled.some(entry => entry.satisfaction < 60) ? "赤い区画の待ち時間、景観、売店、休憩施設を確認しましょう。" : "ゲスト体験は安定しています。黄色い区画の感想に注目しましょう。"
+    };
+  }
+  return {
+    hotspot: "マップ全体",
+    warnings: state.rides.filter(ride => ride.broken).length + state.tiles.filter(tile => tile.litter > .5).length,
+    indicator: `満足 ${Math.round(state.happy)}%`,
+    hint: "分析モードを選ぶとマップ上の運営課題を確認できます。"
+  };
+}
+
+function renderAnalysisPanel() {
+  const modes = {
+    normal: ["通常表示", ui.analysisNormal],
+    crowding: ["混雑ヒートマップ", ui.analysisCrowding],
+    hygiene: ["衛生ヒートマップ", ui.analysisHygiene],
+    satisfaction: ["満足度ヒートマップ", ui.analysisSatisfaction]
+  };
+  for (const [mode, [, button]] of Object.entries(modes)) {
+    button.classList.toggle("active", analysisMode === mode);
+    button.setAttribute("aria-selected", analysisMode === mode ? "true" : "false");
+  }
+  const metrics = getAnalysisMetrics(analysisMode);
+  ui.analysisStatus.textContent = modes[analysisMode][0];
+  ui.analysisMetricA.textContent = metrics.hotspot;
+  ui.analysisMetricB.textContent = metrics.warnings;
+  ui.analysisMetricC.textContent = metrics.indicator;
+  ui.analysisHint.textContent = metrics.hint;
+  ui.analysisLegend.hidden = analysisMode === "normal";
+}
+
+function setAnalysisMode(mode) {
+  if (!["normal", "crowding", "hygiene", "satisfaction"].includes(mode)) return false;
+  analysisMode = mode;
+  renderAnalysisPanel();
+  return true;
 }
 
 function renderMarketingPanel() {
@@ -3837,6 +4004,9 @@ function captureHistoryState() {
       path: tile.path,
       transitTrack: tile.transitTrack,
       litter: tile.litter,
+      traffic: tile.traffic,
+      moodTotal: tile.moodTotal,
+      moodWeight: tile.moodWeight,
       object: tile.object
     })),
     rides: state.rides.map(ride => ({
@@ -4845,6 +5015,10 @@ ui.marketingThrill.addEventListener("click", () => startMarketingCampaign("thril
 ui.marketingScenic.addEventListener("click", () => startMarketingCampaign("scenic"));
 ui.marketingFoodie.addEventListener("click", () => startMarketingCampaign("foodie"));
 ui.marketingCancel.addEventListener("click", cancelMarketingCampaign);
+ui.analysisNormal.addEventListener("click", () => setAnalysisMode("normal"));
+ui.analysisCrowding.addEventListener("click", () => setAnalysisMode("crowding"));
+ui.analysisHygiene.addEventListener("click", () => setAnalysisMode("hygiene"));
+ui.analysisSatisfaction.addEventListener("click", () => setAnalysisMode("satisfaction"));
 ui.routeList.addEventListener("click", event => {
   const stopId = event.target.closest("[data-stop-id]")?.dataset.stopId;
   const tile = transitStopTile(stopId);
@@ -4943,6 +5117,13 @@ window.parkDebug = {
       marketingLeads: Math.ceil(state.marketing.remainingLeads),
       marketingAttracted: Math.floor(state.marketing.attractedGuests),
       marketingRefusals: Math.floor(state.marketing.refusals),
+      analysisMode,
+      busiestTraffic: Number(Math.max(0, ...state.tiles.map(tile => Number(tile.traffic || 0))).toFixed(1)),
+      hygieneWarnings: state.tiles.filter(tile => tileHygieneRisk(tile) >= 35).length,
+      satisfactionWarnings: state.tiles.filter(tile => {
+        const value = tileRecentSatisfaction(tile);
+        return value !== null && value < 60;
+      }).length,
       difficulty: state.difficulty,
       costFactor: difficultyCostFactor(),
       sentiment: Number(state.sentiment.toFixed(1)),
@@ -4997,6 +5178,13 @@ window.parkDebug = {
   marketingFitHint,
   chooseGuestArchetype,
   renderMarketingPanel,
+  setAnalysisMode,
+  getAnalysisMetrics,
+  renderAnalysisPanel,
+  tileHygieneRisk,
+  tileRecentSatisfaction,
+  analysisTileValue,
+  updateAnalysisSignals,
   adjustBusFleet,
   adjustBusInterval,
   toggleStopInRoute,

@@ -109,6 +109,29 @@
         <strong>ウェルカム広場</strong>
         <p>ドラッグで移動、ホイールでズーム。タイルをクリックして建設します。ゲストはつながった通路を通ってライドへ向かいます。</p>
       </div>
+      <section class="analysis-panel" aria-label="パーク分析">
+        <div class="analysis-heading">
+          <strong>パーク分析</strong>
+          <span id="analysisStatus">通常表示</span>
+        </div>
+        <div class="analysis-tabs" role="tablist" aria-label="分析モード">
+          <button id="analysisNormal" role="tab">通常</button>
+          <button id="analysisCrowding" role="tab">混雑</button>
+          <button id="analysisHygiene" role="tab">衛生</button>
+          <button id="analysisSatisfaction" role="tab">満足</button>
+        </div>
+        <div id="analysisLegend" class="analysis-legend" hidden>
+          <span><i class="analysis-low"></i>良好</span>
+          <span><i class="analysis-mid"></i>注意</span>
+          <span><i class="analysis-high"></i>要対応</span>
+        </div>
+        <div class="analysis-metrics">
+          <span>注目地点<b id="analysisMetricA">--</b></span>
+          <span>注意区画<b id="analysisMetricB">0</b></span>
+          <span>園内指標<b id="analysisMetricC">--</b></span>
+        </div>
+        <p id="analysisHint">分析モードを選ぶとマップ上の運営課題を確認できます。</p>
+      </section>
       <section class="progression-panel" aria-label="パーク評価と目標">
         <div class="rating-heading">
           <div>
