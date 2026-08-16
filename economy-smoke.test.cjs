@@ -96,8 +96,10 @@ vm.runInContext(fs.readFileSync("game.js", "utf8"), sandbox, { filename: "game.j
 const debug = sandbox.parkDebug;
 const state = debug.state;
 assert.equal(fs.existsSync("assets/title-screen.png"), true, "the generated title artwork should ship with the game");
+assert.equal(fs.existsSync("assets/opening-theme.mp3"), true, "the chorus loop should ship with the game");
+assert.ok(fs.statSync("assets/opening-theme.mp3").size < 600000, "the opening loop should stay lightweight for GitHub Pages");
 assert.equal(debug.summary().titleScreenActive, true);
-assert.equal(debug.summary().openingMusicAvailable, false, "the title should remain playable while the optional Suno track is absent");
+assert.equal(debug.summary().openingMusicAvailable, false, "the non-browser test sandbox should leave media probing disabled");
 assert.equal(element("titleMusicBtn").hidden, true);
 const guestsBeforeTitleStart = state.guests.length;
 debug.update(10);
