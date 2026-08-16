@@ -97,6 +97,17 @@ const ui = {
   shopStockTotal: document.getElementById("shopStockTotal"),
   shopDeliveryStatus: document.getElementById("shopDeliveryStatus"),
   shopDemandStatus: document.getElementById("shopDemandStatus"),
+  shopDemandForecast: document.getElementById("shopDemandForecast"),
+  foodDemandStatus: document.getElementById("foodDemandStatus"),
+  foodDemandMeta: document.getElementById("foodDemandMeta"),
+  foodDemandAction: document.getElementById("foodDemandAction"),
+  drinkDemandStatus: document.getElementById("drinkDemandStatus"),
+  drinkDemandMeta: document.getElementById("drinkDemandMeta"),
+  drinkDemandAction: document.getElementById("drinkDemandAction"),
+  souvenirDemandStatus: document.getElementById("souvenirDemandStatus"),
+  souvenirDemandMeta: document.getElementById("souvenirDemandMeta"),
+  souvenirDemandAction: document.getElementById("souvenirDemandAction"),
+  shopDemandHint: document.getElementById("shopDemandHint"),
   shopConversion: document.getElementById("shopConversion"),
   shopGrossProfit: document.getElementById("shopGrossProfit"),
   shopOpenStatus: document.getElementById("shopOpenStatus"),
@@ -164,6 +175,11 @@ const SHOP_MANAGEMENT_CONFIG = {
   maxStaff: 3,
   hireCost: 180,
   startingReputation: 65
+};
+const SHOP_DEMAND_KINDS = {
+  food: { label: "フード", tool: "kiosk", need: "hunger", threshold: 66 },
+  drink: { label: "ドリンク", tool: "drink_stand", need: "thirst", threshold: 64 },
+  souvenir: { label: "おみやげ", tool: "souvenir_shop", need: "souvenirDesire", threshold: 68 }
 };
 const RIDE_MANAGEMENT_CONFIG = {
   maxLevel: 3,
@@ -2571,6 +2587,90 @@ function shopKindLabel(kind) {
   return kind === "drink" ? "ドリンク" : kind === "souvenir" ? "おみやげ" : "スナック";
 }
 
+function guestNeedsShopKind(guest, kind) {
+  const config = SHOP_DEMAND_KINDS[kind];
+  if (!config || !guest || guest.done || guestPurchased(guest, kind)) return false;
+  return Number(guest[config.need] || 0) >= config.threshold;
+}
+
+function shopDemandForecast(kind) {
+  const config = SHOP_DEMAND_KINDS[kind];
+  if (!config) return null;
+  const matching = shopTiles().filter(tile => shopKind(tile.object) === kind);
+  const open = matching.filter(tile => tile.object.open !== false);
+  const demanders = state.guests.filter(guest => guestNeedsShopKind(guest, kind));
+  const urgent = demanders.filter(guest => Number(guest[config.need] || 0) >= 82).length;
+  const recentInterest = matching.reduce((sum, tile) => sum + Number(tile.object.recentInterest || 0), 0);
+  const recentSales = matching.reduce((sum, tile) => sum + Number(tile.object.recentSales || 0), 0);
+  const stock = open.reduce((sum, tile) => sum + Number(tile.object.stock || 0), 0);
+  const capacity = open.reduce((sum, tile) => sum + Number(tile.object.maxStock || 0), 0);
+  const pending = open.reduce((sum, tile) => sum + Number(tile.object.pendingStock || 0), 0);
+  const stockRatio = capacity > 0 ? stock / capacity : 0;
+  const interestPerShop = recentInterest / Math.max(1, open.length);
+  let status = "quiet";
+  if ((demanders.length || recentInterest >= 1) && !open.length) status = "shortage";
+  else if (open.length && stockRatio <= .15 && pending <= 0) status = "stock";
+  else if (open.length && (urgent > open.length || demanders.length > open.length * 3 || interestPerShop >= 5)) status = "high";
+  else if (demanders.length || recentInterest >= 1) status = "stable";
+  const focusTile = [...matching].sort((a, b) => {
+    const pressureA = Number(a.object.recentInterest || 0) + (1 - Number(a.object.stock || 0) / Math.max(1, Number(a.object.maxStock || 1))) * 4;
+    const pressureB = Number(b.object.recentInterest || 0) + (1 - Number(b.object.stock || 0) / Math.max(1, Number(b.object.maxStock || 1))) * 4;
+    return pressureB - pressureA;
+  })[0] || null;
+  return {
+    kind,
+    label: config.label,
+    tool: config.tool,
+    status,
+    demanders: demanders.length,
+    urgent,
+    openShops: open.length,
+    totalShops: matching.length,
+    recentInterest,
+    recentSales,
+    stock,
+    capacity,
+    pending,
+    stockRatio,
+    action: ["shortage", "high"].includes(status) ? "build" : focusTile ? "inspect" : "build",
+    focusTile
+  };
+}
+
+function shopDemandForecasts() {
+  return Object.keys(SHOP_DEMAND_KINDS).map(shopDemandForecast);
+}
+
+function renderShopDemandForecast() {
+  const statusLabels = { quiet: "静か", stable: "安定", high: "高需要", shortage: "店舗不足", stock: "在庫注意" };
+  const refs = {
+    food: [ui.foodDemandStatus, ui.foodDemandMeta, ui.foodDemandAction],
+    drink: [ui.drinkDemandStatus, ui.drinkDemandMeta, ui.drinkDemandAction],
+    souvenir: [ui.souvenirDemandStatus, ui.souvenirDemandMeta, ui.souvenirDemandAction]
+  };
+  const forecasts = shopDemandForecasts();
+  for (const forecast of forecasts) {
+    const [statusRef, metaRef, button] = refs[forecast.kind];
+    statusRef.textContent = statusLabels[forecast.status];
+    metaRef.textContent = `需要${forecast.demanders}・営業${forecast.openShops}`;
+    button.className = forecast.status;
+    button.title = forecast.action === "build" ? `${forecast.label}の建設モードへ` : `${forecast.label}の店舗を確認`;
+    button.setAttribute("aria-label", `${forecast.label} ${statusLabels[forecast.status]}、需要${forecast.demanders}人、営業${forecast.openShops}店`);
+  }
+  const priority = { shortage: 5, high: 4, stock: 3, stable: 2, quiet: 1 };
+  const focus = [...forecasts].sort((a, b) => priority[b.status] - priority[a.status] || b.demanders - a.demanders)[0];
+  ui.shopDemandHint.classList.toggle("warning", ["shortage", "high", "stock"].includes(focus.status));
+  ui.shopDemandHint.textContent = focus.status === "shortage"
+    ? `${focus.label}を求める${focus.demanders}人に営業店がありません。`
+    : focus.status === "high"
+      ? `${focus.label}需要が営業${focus.openShops}店へ集中しています。`
+      : focus.status === "stock"
+        ? `${focus.label}の在庫が少なく、配送待ちもありません。`
+        : focus.status === "stable"
+          ? `${focus.label}需要は営業店舗で対応できています。`
+          : "ゲストの需要を観測しています。";
+}
+
 function routeGuestToShop(guest, kind, announce = true) {
   const choice = chooseShop(guest, kind);
   if (!choice) return false;
@@ -3726,6 +3826,7 @@ function computeStats() {
       : shopPerformanceTotals.recentInterest >= 3
         ? "安定"
         : "静か";
+  renderShopDemandForecast();
   ui.shopConversion.textContent = shopConversion === null ? "--" : `${Math.round(shopConversion * 100)}%`;
   ui.shopConversion.className = shopConversion !== null && shopConversion < .6 ? "warning" : "";
   ui.shopGrossProfit.textContent = `${shopPerformanceTotals.grossProfit >= 0 ? "+" : "-"}$${Math.abs(Math.round(shopPerformanceTotals.grossProfit)).toLocaleString()}`;
@@ -4729,17 +4830,37 @@ function applySelectedShopRecommendedPrice() {
   return true;
 }
 
+function focusMapTile(tile) {
+  if (!tile) return false;
+  const point = iso(tile.x + .5, tile.y + .5);
+  camera.x += innerWidth * .42 - point.x;
+  camera.y += innerHeight * .48 - point.y;
+  inspect(tile);
+  return true;
+}
+
 function focusHighestPricedShop() {
   const issue = shopPricingIssues()[0];
   if (!issue) {
     toast("高めの商品価格はありません");
     return false;
   }
-  const point = iso(issue.tile.x + .5, issue.tile.y + .5);
-  camera.x += innerWidth * .42 - point.x;
-  camera.y += innerHeight * .48 - point.y;
-  inspect(issue.tile);
+  focusMapTile(issue.tile);
   toast(`${tools[issue.tile.object.type].label}を確認：推奨 $${issue.diagnosis.recommended}`);
+  return true;
+}
+
+function handleShopDemandAction(kind) {
+  const forecast = shopDemandForecast(kind);
+  if (!forecast) return false;
+  if (forecast.action === "build") {
+    const selected = selectTool(forecast.tool);
+    if (selected) toast(`${forecast.label}需要に対応する建設モードへ切り替えました`);
+    return selected;
+  }
+  if (!focusMapTile(forecast.focusTile)) return false;
+  const shop = forecast.focusTile.object;
+  toast(`${tools[shop.type].label}を確認：在庫 ${Math.floor(shop.stock)}/${Math.floor(shop.maxStock)}`);
   return true;
 }
 
@@ -5111,6 +5232,10 @@ ui.marketingScenic.addEventListener("click", () => startMarketingCampaign("sceni
 ui.marketingFoodie.addEventListener("click", () => startMarketingCampaign("foodie"));
 ui.marketingCancel.addEventListener("click", cancelMarketingCampaign);
 ui.shopPricingAction.addEventListener("click", focusHighestPricedShop);
+ui.shopDemandForecast.addEventListener("click", event => {
+  const kind = event.target.closest("[data-shop-demand-kind]")?.dataset.shopDemandKind;
+  if (kind) handleShopDemandAction(kind);
+});
 ui.analysisNormal.addEventListener("click", () => setAnalysisMode("normal"));
 ui.analysisCrowding.addEventListener("click", () => setAnalysisMode("crowding"));
 ui.analysisHygiene.addEventListener("click", () => setAnalysisMode("hygiene"));
@@ -5214,6 +5339,7 @@ window.parkDebug = {
       marketingLeads: Math.ceil(state.marketing.remainingLeads),
       marketingAttracted: Math.floor(state.marketing.attractedGuests),
       marketingRefusals: Math.floor(state.marketing.refusals),
+      selectedTool,
       analysisMode,
       busiestTraffic: Number(Math.max(0, ...state.tiles.map(tile => Number(tile.traffic || 0))).toFixed(1)),
       hygieneWarnings: state.tiles.filter(tile => tileHygieneRisk(tile) >= 35).length,
@@ -5250,6 +5376,7 @@ window.parkDebug = {
       shopGrossProfit: shopTiles().reduce((sum, tile) => sum + shopPerformance(tile.object).grossProfit, 0),
       shopDeliveries: shopTiles().reduce((sum, tile) => sum + Number(tile.object.deliveries || 0), 0),
       shopTypes: Object.fromEntries(["food", "drink", "souvenir"].map(kind => [kind, shopTiles().filter(tile => shopKind(tile.object) === kind).length])),
+      shopDemand: Object.fromEntries(shopDemandForecasts().map(forecast => [forecast.kind, { status: forecast.status, demanders: forecast.demanders, openShops: forecast.openShops }])),
       openShops: shopTiles().filter(tile => tile.object.open !== false).length,
       shopStaff: shopTiles().filter(tile => tile.object.open !== false).reduce((sum, tile) => sum + Number(tile.object.staff || 1), 0),
       averageShopReputation: Math.round(shopTiles().length ? shopTiles().reduce((sum, tile) => sum + Number(tile.object.reputation ?? SHOP_MANAGEMENT_CONFIG.startingReputation), 0) / shopTiles().length : 0),
@@ -5318,6 +5445,11 @@ window.parkDebug = {
   chooseShop,
   shopKind,
   desiredShopKind,
+  guestNeedsShopKind,
+  shopDemandForecast,
+  shopDemandForecasts,
+  renderShopDemandForecast,
+  handleShopDemandAction,
   routeGuestToShop,
   shopPriceTolerance,
   shopRecommendedPrice,
@@ -5332,6 +5464,7 @@ window.parkDebug = {
   shopCapacityAtLevel,
   buyFromShop,
   applySelectedShopRecommendedPrice,
+  focusMapTile,
   focusHighestPricedShop,
   inspect,
   drawWorld,

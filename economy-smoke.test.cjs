@@ -114,6 +114,27 @@ assert.equal(starterShop.open, true);
 assert.equal(starterShop.staff, 1);
 assert.equal(starterShop.level, 1);
 assert.equal(starterShop.reputation, 65);
+const forecastGuest = {
+  done: false,
+  spent: false,
+  purchases: { food: false, drink: false, souvenir: false },
+  hunger: 20,
+  thirst: 90,
+  souvenirDesire: 20
+};
+state.guests.push(forecastGuest);
+const missingDrinkForecast = debug.shopDemandForecast("drink");
+assert.equal(missingDrinkForecast.status, "shortage");
+assert.equal(missingDrinkForecast.demanders, 1);
+assert.equal(missingDrinkForecast.openShops, 0);
+assert.equal(missingDrinkForecast.action, "build");
+debug.renderShopDemandForecast();
+assert.equal(element("drinkDemandStatus").textContent, "店舗不足");
+assert.match(element("drinkDemandMeta").textContent, /需要1/);
+assert.equal(debug.handleShopDemandAction("drink"), true);
+assert.equal(debug.summary().selectedTool, "drink_stand");
+debug.setTool("inspect");
+state.guests.pop();
 debug.setDifficulty("standard", { silent: true });
 assert.equal(state.money, 24000);
 assert.equal(debug.difficultyCostFactor(), .95 * .75);
@@ -397,6 +418,23 @@ assert.equal(souvenirShop.maxStock, 45);
 assert.equal(souvenirShop.price, 14);
 assert.equal(debug.shopDeliverySize(souvenirShop), 20);
 assert.equal(debug.shopUnitCost(souvenirShop), 6);
+
+const guestsBeforeDemandTest = state.guests;
+state.guests = Array.from({ length: 4 }, () => ({
+  done: false,
+  spent: false,
+  purchases: { food: false, drink: false, souvenir: false },
+  hunger: 20,
+  thirst: 90,
+  souvenirDesire: 20
+}));
+drinkStand.recentInterest = 0;
+const highDrinkForecast = debug.shopDemandForecast("drink");
+assert.equal(highDrinkForecast.status, "high");
+assert.equal(highDrinkForecast.openShops, 1);
+assert.equal(highDrinkForecast.demanders, 4);
+assert.equal(highDrinkForecast.action, "build");
+state.guests = guestsBeforeDemandTest;
 
 const thirstyGuest = {
   tile: state.tiles.find(tile => tile.x === 8 && tile.y === 10),

@@ -1,5 +1,5 @@
 import http from "node:http";
-import { createReadStream, existsSync } from "node:fs";
+import { createReadStream, existsSync, statSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 
 const root = process.cwd();
@@ -13,9 +13,12 @@ const types = {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host}`);
-  const clean = normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, "");
-  const path = join(root, clean === "/" ? "index.html" : clean);
-  if (!path.startsWith(root) || !existsSync(path)) {
+  const pathname = decodeURIComponent(url.pathname);
+  const clean = pathname === "/"
+    ? "index.html"
+    : normalize(pathname.replace(/^[/\\]+/, "")).replace(/^(\.\.[/\\])+/, "");
+  const path = join(root, clean);
+  if (!path.startsWith(root) || !existsSync(path) || !statSync(path).isFile()) {
     res.writeHead(404);
     res.end("Not found");
     return;

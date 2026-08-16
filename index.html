@@ -211,6 +211,18 @@
           <span>成約率<b id="shopConversion">--</b></span>
           <span>仕入差引<b id="shopGrossProfit">$0</b></span>
         </div>
+        <div id="shopDemandForecast" class="shop-demand-forecast" aria-label="商品カテゴリ別の需要予測">
+          <button id="foodDemandAction" data-shop-demand-kind="food" title="フード需要を確認">
+            <span>フード</span><b id="foodDemandStatus">静か</b><small id="foodDemandMeta">需要0・営業1</small>
+          </button>
+          <button id="drinkDemandAction" data-shop-demand-kind="drink" title="ドリンク需要を確認">
+            <span>ドリンク</span><b id="drinkDemandStatus">静か</b><small id="drinkDemandMeta">需要0・営業0</small>
+          </button>
+          <button id="souvenirDemandAction" data-shop-demand-kind="souvenir" title="おみやげ需要を確認">
+            <span>おみやげ</span><b id="souvenirDemandStatus">静か</b><small id="souvenirDemandMeta">需要0・営業0</small>
+          </button>
+        </div>
+        <p id="shopDemandHint" class="shop-demand-hint">ゲストの需要を観測しています。</p>
         <div class="shop-operations-summary" aria-label="売店の営業状況">
           <span id="shopOpenStatus">営業 1 / 1</span>
           <span id="shopStaffStatus">店員 1人</span>
