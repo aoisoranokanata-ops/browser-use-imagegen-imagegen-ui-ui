@@ -8,6 +8,13 @@ const ui = {
   guests: document.getElementById("guests"),
   day: document.getElementById("day"),
   round: document.getElementById("round"),
+  conditionPanel: document.getElementById("conditionPanel"),
+  conditionCurrent: document.getElementById("conditionCurrent"),
+  conditionArrival: document.getElementById("conditionArrival"),
+  conditionDemand: document.getElementById("conditionDemand"),
+  conditionRide: document.getElementById("conditionRide"),
+  conditionNext: document.getElementById("conditionNext"),
+  conditionHint: document.getElementById("conditionHint"),
   selected: document.getElementById("selected"),
   analysisStatus: document.getElementById("analysisStatus"),
   analysisNormal: document.getElementById("analysisNormal"),
@@ -204,6 +211,57 @@ const MARKETING_CAMPAIGNS = {
   scenic: { label: "景観好き", cost: 500, leads: 16, interval: .8, targetShare: .64 },
   foodie: { label: "グルメ層", cost: 550, leads: 18, interval: .78, targetShare: .66 }
 };
+const DAY_CONDITIONS = {
+  sunny: {
+    label: "晴れ",
+    arrivalRate: 1,
+    hungerRate: 1,
+    thirstRate: 1,
+    souvenirRate: 1,
+    rideBias: { wheel: 3, coaster: 2 },
+    arrivalLabel: "標準",
+    demandLabel: "均衡",
+    rideLabel: "屋外 +",
+    hint: "過ごしやすい一日です。売店とライドをバランスよく運営しましょう。"
+  },
+  heatwave: {
+    label: "猛暑",
+    arrivalRate: .86,
+    hungerRate: .9,
+    thirstRate: 1.65,
+    souvenirRate: .9,
+    rideBias: { teacups: 8, carousel: 2, wheel: -6, coaster: -5 },
+    arrivalLabel: "少なめ",
+    demandLabel: "飲料 ↑↑",
+    rideLabel: "涼しさ優先",
+    hint: "のどの渇きが急増します。ドリンクの在庫と営業スタッフを先に確認しましょう。"
+  },
+  rain: {
+    label: "雨",
+    arrivalRate: .72,
+    hungerRate: 1.08,
+    thirstRate: .72,
+    souvenirRate: 1.08,
+    rideBias: { teacups: 9, carousel: 5, wheel: -9, coaster: -11 },
+    arrivalLabel: "減少",
+    demandLabel: "軽食 ↑",
+    rideLabel: "屋内優先",
+    hint: "来園者は減りますが、屋根のある穏やかな遊具と軽食が選ばれやすくなります。"
+  },
+  holiday: {
+    label: "休日イベント",
+    arrivalRate: 1.28,
+    hungerRate: 1.25,
+    thirstRate: 1.15,
+    souvenirRate: 1.65,
+    rideBias: { carousel: 4, wheel: 4, coaster: 4, teacups: 4 },
+    arrivalLabel: "大幅増",
+    demandLabel: "土産 ↑↑",
+    rideLabel: "全体 +",
+    hint: "多くのゲストが来園します。行列対策とおみやげ在庫を厚めに用意しましょう。"
+  }
+};
+const DAY_CONDITION_ORDER = ["sunny", "heatwave", "rain", "holiday"];
 const GUEST_ARCHETYPES = {
   family: { label: "子ども連れ", rideBias: { carousel: 12, teacups: 9, wheel: 4, coaster: -8 }, hungerRate: 1.15, thirstRate: 1.05, souvenirBias: 1.25, fatigueRate: 1.05 },
   thrill: { label: "絶叫好き", rideBias: { coaster: 18, wheel: 7, carousel: -5, teacups: -4 }, hungerRate: .9, thirstRate: 1.2, souvenirBias: .75, fatigueRate: .85 },
@@ -329,6 +387,7 @@ const state = {
   sentiment: 0,
   admissionFee: 25,
   difficulty: "beginner",
+  dayCondition: { current: "sunny", next: "heatwave" },
   finance: {
     admissionRevenue: 0,
     rideRevenue: 0,
@@ -2186,6 +2245,56 @@ function chooseGuestArchetype(campaignType = state.marketing?.activeCampaign) {
   return archetypeKeys[Math.floor(Math.random() * archetypeKeys.length)];
 }
 
+function currentDayCondition() {
+  return DAY_CONDITIONS[state.dayCondition?.current] || DAY_CONDITIONS.sunny;
+}
+
+function rollDayCondition(exclude = state.dayCondition?.current) {
+  const candidates = DAY_CONDITION_ORDER.filter(type => type !== exclude);
+  return candidates[Math.floor(Math.random() * candidates.length)] || "sunny";
+}
+
+function setDayCondition(current, next = state.dayCondition?.next) {
+  if (!DAY_CONDITIONS[current]) return false;
+  state.dayCondition = {
+    current,
+    next: DAY_CONDITIONS[next] && next !== current ? next : rollDayCondition(current)
+  };
+  renderDayCondition();
+  return true;
+}
+
+function dayConditionRideBias(type) {
+  return Number(currentDayCondition().rideBias?.[type] || 0);
+}
+
+function dayConditionArrivalInterval(baseInterval) {
+  return Number(baseInterval) / currentDayCondition().arrivalRate;
+}
+
+function guestNeedRates(guest) {
+  const profile = guest?.profile || GUEST_ARCHETYPES[guest?.archetype] || GUEST_ARCHETYPES.relaxed;
+  const condition = currentDayCondition();
+  return {
+    hunger: Number(profile.hungerRate || 1) * condition.hungerRate,
+    thirst: Number(profile.thirstRate || .9) * condition.thirstRate,
+    souvenir: .035 * Number(profile.souvenirBias || 1) * condition.souvenirRate
+  };
+}
+
+function renderDayCondition() {
+  const condition = currentDayCondition();
+  const nextType = DAY_CONDITIONS[state.dayCondition?.next] ? state.dayCondition.next : "sunny";
+  const nextCondition = DAY_CONDITIONS[nextType];
+  ui.conditionPanel.dataset.condition = state.dayCondition.current;
+  ui.conditionCurrent.textContent = condition.label;
+  ui.conditionArrival.textContent = condition.arrivalLabel;
+  ui.conditionDemand.textContent = condition.demandLabel;
+  ui.conditionRide.textContent = condition.rideLabel;
+  ui.conditionNext.textContent = `次回 ${nextCondition.label}`;
+  ui.conditionHint.textContent = condition.hint;
+}
+
 function updateAnalysisSignals(dt) {
   const decay = Math.exp(-dt / 35);
   for (const tile of state.tiles) {
@@ -2209,7 +2318,7 @@ function update(dt) {
   const transitStops = busStops().length;
   const admissionPressure = Math.max(0, state.admissionFee - 25) * .045;
   const campaignInterval = activeMarketingCampaign()?.interval || 1;
-  const interval = Math.max(.65, (3.6 - attraction / 42 - state.round * .08 - transitStops * .14 + admissionPressure) * campaignInterval);
+  const interval = Math.max(.65, dayConditionArrivalInterval((3.6 - attraction / 42 - state.round * .08 - transitStops * .14 + admissionPressure) * campaignInterval));
   if (spawnTimer > interval && state.guests.length < 12 + state.round * 5) {
     spawnTimer = 0;
     spawnGuest();
@@ -2469,6 +2578,7 @@ function spawnGuest() {
 
 function spawnGuestAt(startTile) {
   const campaign = activeMarketingCampaign();
+  const conditionType = state.dayCondition.current;
   const campaignType = campaign?.type || null;
   const archetype = chooseGuestArchetype(campaignType);
   if (campaign) {
@@ -2501,9 +2611,9 @@ function spawnGuestAt(startTile) {
     spent: false,
     budget: (archetype === "family" ? 48 : 28) + Math.random() * 54,
     priceSensitivity: .65 + Math.random() * .8,
-    hunger: (archetype === "foodie" ? 52 : 24) + Math.random() * 18,
-    thirst: (archetype === "thrill" ? 38 : 22) + Math.random() * 20,
-    souvenirDesire: (archetype === "scenic" || archetype === "family" ? 24 : 12) + Math.random() * 18,
+    hunger: (archetype === "foodie" ? 52 : 24) + (conditionType === "holiday" ? 5 : 0) + Math.random() * 18,
+    thirst: (archetype === "thrill" ? 38 : 22) + (conditionType === "heatwave" ? 14 : 0) + Math.random() * 20,
+    souvenirDesire: (archetype === "scenic" || archetype === "family" ? 24 : 12) + (conditionType === "holiday" ? 16 : 0) + Math.random() * 18,
     purchases: { food: false, drink: false, souvenir: false },
     fatigue: (archetype === "family" ? 24 : 12) + Math.random() * 36,
     restroomNeed: (archetype === "family" ? 32 : 20) + Math.random() * 40,
@@ -2544,6 +2654,7 @@ function chooseRide(guest = null) {
     const profile = guest?.profile || { rideBias: {} };
     const score = ride => rideEffectiveAppeal(ride)
       + Number(profile.rideBias?.[ride.type] || 0)
+      + dayConditionRideBias(ride.type)
       + (guest?.archetype === "scenic" ? localSceneryScore(ride) * 1.2 : 0)
       - ride.queue.length * (guest?.archetype === "family" ? 5.5 : 4)
       - Number(ride.price ?? tools[ride.type].defaultPrice) * sensitivity
@@ -2867,11 +2978,12 @@ function nearestPath(ride) {
 
 function updateGuest(g, dt) {
   const profile = g.profile || GUEST_ARCHETYPES[g.archetype] || GUEST_ARCHETYPES.relaxed;
+  const needRates = guestNeedRates(g);
   g.thoughtTimer = Math.max(0, Number(g.thoughtTimer || 0) - dt);
   g.thoughtCooldown = Math.max(0, Number(g.thoughtCooldown || 0) - dt);
-  g.hunger = clamp(Number(g.hunger || 0) + dt * profile.hungerRate, 0, 100);
-  g.thirst = clamp(Number(g.thirst || 0) + dt * Number(profile.thirstRate || .9), 0, 100);
-  g.souvenirDesire = clamp(Number(g.souvenirDesire || 0) + dt * .035 * Number(profile.souvenirBias || 1), 0, 100);
+  g.hunger = clamp(Number(g.hunger || 0) + dt * needRates.hunger, 0, 100);
+  g.thirst = clamp(Number(g.thirst || 0) + dt * needRates.thirst, 0, 100);
+  g.souvenirDesire = clamp(Number(g.souvenirDesire || 0) + dt * needRates.souvenir, 0, 100);
   g.fatigue = clamp(Number(g.fatigue || 0) + dt * profile.fatigueRate * (g.state === "queued" ? 1.35 : 1), 0, 100);
   g.restroomNeed = clamp(Number(g.restroomNeed || 0) + dt * (g.archetype === "family" ? .8 : .65), 0, 100);
 
@@ -3588,6 +3700,7 @@ function saveGame() {
     sentiment: state.sentiment,
     admissionFee: state.admissionFee,
     difficulty: state.difficulty,
+    dayCondition: { ...state.dayCondition },
     finance: { ...state.finance },
     marketing: { ...state.marketing },
     guestLog: state.guestLog,
@@ -3640,6 +3753,11 @@ function loadGame() {
     state.sentiment = clamp(Number(save.sentiment) || 0, -20, 20);
     state.admissionFee = clamp(Number(save.admissionFee ?? 25), 0, 75);
     state.difficulty = DIFFICULTY_CONFIGS[save.difficulty] ? save.difficulty : "standard";
+    const savedCurrentCondition = DAY_CONDITIONS[save.dayCondition?.current] ? save.dayCondition.current : "sunny";
+    const savedNextCondition = DAY_CONDITIONS[save.dayCondition?.next] && save.dayCondition.next !== savedCurrentCondition
+      ? save.dayCondition.next
+      : (savedCurrentCondition === "heatwave" ? "sunny" : "heatwave");
+    state.dayCondition = { current: savedCurrentCondition, next: savedNextCondition };
     analysisMode = ["normal", "crowding", "hygiene", "satisfaction"].includes(save.analysisMode) ? save.analysisMode : "normal";
     state.finance = {
       admissionRevenue: Math.max(0, Number(save.finance?.admissionRevenue) || 0),
@@ -3776,6 +3894,7 @@ function computeStats() {
         : "園内を観察中";
   ui.day.textContent = state.day;
   ui.round.textContent = state.round;
+  renderDayCondition();
   ui.cleanerCount.textContent = state.staff.cleaners;
   ui.mechanicCount.textContent = state.staff.mechanics;
   const cleanerTeamStats = staffTeamStats("cleaner");
@@ -5134,6 +5253,7 @@ function showRoundReport(report) {
     <span>目標報酬<b>$${report.goalReward.toLocaleString()}</b></span>
     <span>評価報奨<b>$${report.ratingBonus.toLocaleString()}</b></span>`;
   const achievements = [
+    `<p class="condition-note">${DAY_CONDITIONS[report.condition]?.label || "晴れ"}の営業を終了。新ラウンドは${currentDayCondition().label}、次回予報は${DAY_CONDITIONS[state.dayCondition.next].label}です。</p>`,
     ...report.completedGoals.map(status => `<p>目標達成: ${status.goal.label}　+$${status.goal.reward.toLocaleString()}</p>`),
     ...report.newUnlocks.map(label => `<p>新解禁: ${label}</p>`)
   ];
@@ -5167,6 +5287,7 @@ function settleRound() {
   const ratingBonus = baseBonus + prestigeBonus + worldClassBonus;
   const report = {
     round: state.round,
+    condition: state.dayCondition.current,
     revenue: metrics.revenue,
     expenses: metrics.expenses,
     net: metrics.net,
@@ -5182,6 +5303,8 @@ function settleRound() {
   state.progression.reports = state.progression.reports.slice(0, 8);
   state.round++;
   state.day++;
+  state.dayCondition.current = state.dayCondition.next;
+  state.dayCondition.next = rollDayCondition(state.dayCondition.current);
   state.progression.roundStartServed = state.guestsServed;
   Object.keys(state.finance).forEach(key => { state.finance[key] = 0; });
   undoStack.length = 0;
@@ -5339,6 +5462,8 @@ window.parkDebug = {
       marketingLeads: Math.ceil(state.marketing.remainingLeads),
       marketingAttracted: Math.floor(state.marketing.attractedGuests),
       marketingRefusals: Math.floor(state.marketing.refusals),
+      dayCondition: state.dayCondition.current,
+      nextDayCondition: state.dayCondition.next,
       selectedTool,
       analysisMode,
       busiestTraffic: Number(Math.max(0, ...state.tiles.map(tile => Number(tile.traffic || 0))).toFixed(1)),
@@ -5402,6 +5527,13 @@ window.parkDebug = {
   marketingFit,
   marketingFitHint,
   chooseGuestArchetype,
+  currentDayCondition,
+  rollDayCondition,
+  setDayCondition,
+  dayConditionRideBias,
+  dayConditionArrivalInterval,
+  guestNeedRates,
+  renderDayCondition,
   renderMarketingPanel,
   setAnalysisMode,
   getAnalysisMetrics,

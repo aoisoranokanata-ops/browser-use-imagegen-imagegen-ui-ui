@@ -114,6 +114,30 @@ assert.equal(starterShop.open, true);
 assert.equal(starterShop.staff, 1);
 assert.equal(starterShop.level, 1);
 assert.equal(starterShop.reputation, 65);
+const conditionGuest = { profile: { hungerRate: 1, thirstRate: 1, souvenirBias: 1 } };
+assert.equal(debug.setDayCondition("sunny", "heatwave"), true);
+const sunnyNeedRates = debug.guestNeedRates(conditionGuest);
+const sunnyArrivalInterval = debug.dayConditionArrivalInterval(10);
+assert.equal(debug.currentDayCondition().label, "晴れ");
+assert.equal(element("conditionCurrent").textContent, "晴れ");
+assert.equal(element("conditionNext").textContent, "次回 猛暑");
+assert.equal(debug.setDayCondition("heatwave", "holiday"), true);
+const heatwaveNeedRates = debug.guestNeedRates(conditionGuest);
+assert.ok(heatwaveNeedRates.thirst > sunnyNeedRates.thirst * 1.5, "heatwaves should sharply increase drink demand");
+assert.ok(debug.dayConditionArrivalInterval(10) > sunnyArrivalInterval, "heatwaves should slightly reduce arrivals");
+assert.ok(debug.dayConditionRideBias("teacups") > debug.dayConditionRideBias("coaster"));
+assert.match(element("conditionHint").textContent, /ドリンク/);
+assert.equal(debug.setDayCondition("holiday", "rain"), true);
+const holidayNeedRates = debug.guestNeedRates(conditionGuest);
+assert.ok(holidayNeedRates.souvenir > sunnyNeedRates.souvenir * 1.5, "holidays should increase souvenir demand");
+assert.equal(debug.currentDayCondition().arrivalRate, 1.28);
+assert.ok(debug.dayConditionArrivalInterval(10) < sunnyArrivalInterval, "holidays should increase arrivals");
+debug.saveGame();
+debug.setDayCondition("rain", "sunny");
+debug.loadGame();
+assert.equal(state.dayCondition.current, "holiday");
+assert.equal(state.dayCondition.next, "rain", "condition forecasts should survive save/load");
+debug.setDayCondition("sunny", "heatwave");
 const forecastGuest = {
   done: false,
   spent: false,
@@ -872,8 +896,14 @@ state.progression.activeGoalIds = ["profit", "guests", "clean"];
 state.progression.completedGoalIds = [];
 Object.keys(state.finance).forEach(key => { state.finance[key] = 0; });
 state.finance.admissionRevenue = 10000;
+debug.setDayCondition("rain", "holiday");
 const goalMoneyBefore = state.money;
 const fiveStarReport = debug.settleRound();
+assert.equal(fiveStarReport.condition, "rain");
+assert.equal(state.dayCondition.current, "holiday");
+assert.notEqual(state.dayCondition.next, state.dayCondition.current);
+assert.equal(element("conditionCurrent").textContent, "休日イベント");
+assert.match(element("reportAchievements").innerHTML, /次回予報/);
 assert.equal(fiveStarReport.rating.stars, 5);
 assert.equal(fiveStarReport.goalReward, 1850);
 assert.equal(state.progression.bestStars, 5);
@@ -938,6 +968,7 @@ const legacySave = JSON.parse(modernSave);
 delete legacySave.progression;
 delete legacySave.staffRoster;
 delete legacySave.marketing;
+delete legacySave.dayCondition;
 delete legacySave.finance.marketingExpenses;
 delete legacySave.analysisMode;
 legacySave.tiles.forEach(tile => {
@@ -997,10 +1028,14 @@ assert.ok(state.staffAgents.every(agent => agent.level === 1 && agent.fatigue ==
 assert.equal(state.marketing.activeCampaign, null);
 assert.equal(state.marketing.remainingLeads, 0);
 assert.equal(state.finance.marketingExpenses, 0);
+assert.equal(state.dayCondition.current, "sunny");
+assert.equal(state.dayCondition.next, "heatwave", "legacy saves should receive a useful first forecast");
 assert.equal(debug.summary().analysisMode, "normal");
 assert.ok(state.tiles.every(tile => tile.traffic === 0 && tile.moodWeight === 0));
 storage.set("yumeshimaParkSaveV1", modernSave);
 debug.loadGame();
 assert.equal(state.progression.bestStars, 5);
+assert.equal(state.dayCondition.current, "heatwave");
+assert.equal(state.dayCondition.next, "sunny");
 
 console.log("economy smoke test: OK", JSON.stringify(debug.summary()));

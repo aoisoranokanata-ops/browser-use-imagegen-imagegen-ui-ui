@@ -381,6 +381,7 @@ button.active { background: #26313f; color: #fff8df; }
 .report-achievements { display: grid; gap: 5px; margin: 12px 0; }
 .report-achievements p { margin: 0; padding: 7px 9px; background: rgba(102, 184, 107, .12); border-left: 3px solid var(--green); border-radius: 4px; font-size: 10px; line-height: 1.4; }
 .report-achievements p.neutral { background: rgba(38, 49, 63, .05); border-left-color: var(--muted); }
+.report-achievements p.condition-note { background: rgba(73, 171, 194, .1); border-left-color: var(--teal); }
 .round-report-dialog > .primary { margin: 0; }
 
 .zoom-controls {
@@ -412,6 +413,59 @@ h1 { margin: 0; font-size: 21px; }
 }
 
 .selected p { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+
+.condition-panel {
+  margin: 10px 0 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.condition-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.condition-heading span small,
+.condition-heading span strong { display: block; }
+.condition-heading span small { color: var(--muted); font-size: 9px; font-weight: 800; }
+.condition-heading span strong { margin-top: 1px; font-size: 16px; }
+.condition-heading > b {
+  padding: 5px 7px;
+  border: 1px solid rgba(73, 171, 194, .38);
+  border-radius: 4px;
+  color: var(--teal);
+  background: rgba(73, 171, 194, .08);
+  font-size: 9px;
+}
+
+.condition-effects {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.condition-effects span {
+  min-width: 0;
+  padding: 5px 3px;
+  color: var(--muted);
+  background: rgba(38, 49, 63, .05);
+  border-radius: 4px;
+  font-size: 8px;
+  text-align: center;
+}
+
+.condition-effects b { display: block; margin-top: 2px; color: var(--ink); font-size: 10px; overflow-wrap: anywhere; }
+.condition-panel > p { margin: 6px 0 0; color: var(--muted); font-size: 9px; line-height: 1.4; }
+.condition-panel[data-condition="heatwave"] .condition-heading span strong,
+.condition-panel[data-condition="heatwave"] .condition-effects b { color: #a45236; }
+.condition-panel[data-condition="rain"] .condition-heading span strong,
+.condition-panel[data-condition="rain"] .condition-effects b { color: #39768f; }
+.condition-panel[data-condition="holiday"] .condition-heading span strong,
+.condition-panel[data-condition="holiday"] .condition-effects b { color: #317f69; }
 
 .analysis-panel {
   margin: 10px 0 12px;
