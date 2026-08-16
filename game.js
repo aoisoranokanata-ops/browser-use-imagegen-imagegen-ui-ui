@@ -1,6 +1,11 @@
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const ui = {
+  titleScreen: document.getElementById("titleScreen"),
+  titleStartBtn: document.getElementById("titleStartBtn"),
+  titleMusicBtn: document.getElementById("titleMusicBtn"),
+  gameMusicBtn: document.getElementById("gameMusicBtn"),
+  openingMusic: document.getElementById("openingMusic"),
   money: document.getElementById("money"),
   happy: document.getElementById("happy"),
   clean: document.getElementById("clean"),
@@ -165,6 +170,7 @@ const W = 28;
 const H = 28;
 const SAVE_KEY = "yumeshimaParkSaveV1";
 const TUTORIAL_KEY = "yumeshimaParkTutorialV1";
+const OPENING_MUSIC_PATH = "assets/opening-theme.mp3";
 const DIFFICULTY_CONFIGS = {
   beginner: { label: "はじめて", initialMoney: 30000, costMultiplier: .8, graceRounds: 2, graceMultiplier: .5 },
   standard: { label: "標準", initialMoney: 24000, costMultiplier: .95, graceRounds: 1, graceMultiplier: .75 },
@@ -361,6 +367,8 @@ let selectedTile = null;
 let selectedTool = "inspect";
 let analysisMode = "normal";
 let selectedHero = localStorage.getItem("parkHero") || "male";
+let titleScreenActive = true;
+let openingMusicAvailable = false;
 let paused = false;
 let pausedBeforeReport = false;
 let pausedBeforeTutorial = false;
@@ -2295,6 +2303,56 @@ function renderDayCondition() {
   ui.conditionHint.textContent = condition.hint;
 }
 
+function renderOpeningMusicControls() {
+  const playing = openingMusicAvailable && !ui.openingMusic.paused;
+  const label = playing ? "オープニング曲を停止" : "オープニング曲を再生";
+  for (const button of [ui.titleMusicBtn, ui.gameMusicBtn]) {
+    button.hidden = !openingMusicAvailable;
+    button.classList.toggle("muted", !playing);
+    button.setAttribute("aria-label", label);
+    button.setAttribute("title", label);
+  }
+}
+
+function prepareOpeningMusic() {
+  renderOpeningMusicControls();
+  if (typeof fetch !== "function") return;
+  fetch(OPENING_MUSIC_PATH, { method: "HEAD", cache: "no-store" })
+    .then(response => {
+      if (!response.ok) return;
+      ui.openingMusic.src = OPENING_MUSIC_PATH;
+      ui.openingMusic.volume = .38;
+      openingMusicAvailable = true;
+      renderOpeningMusicControls();
+    })
+    .catch(() => {});
+}
+
+function playOpeningMusic() {
+  if (!openingMusicAvailable) return false;
+  const result = ui.openingMusic.play();
+  if (result?.catch) result.catch(() => renderOpeningMusicControls());
+  return true;
+}
+
+function toggleOpeningMusic() {
+  if (!openingMusicAvailable) return false;
+  if (ui.openingMusic.paused) playOpeningMusic();
+  else ui.openingMusic.pause();
+  renderOpeningMusicControls();
+  return true;
+}
+
+function startGame() {
+  if (!titleScreenActive) return false;
+  titleScreenActive = false;
+  playOpeningMusic();
+  ui.titleScreen.classList.add("is-leaving");
+  last = performance.now();
+  setTimeout(() => { ui.titleScreen.hidden = true; }, 650);
+  return true;
+}
+
 function updateAnalysisSignals(dt) {
   const decay = Math.exp(-dt / 35);
   for (const tile of state.tiles) {
@@ -2310,7 +2368,7 @@ function updateAnalysisSignals(dt) {
 }
 
 function update(dt) {
-  if (paused) return;
+  if (paused || titleScreenActive) return;
   spawnTimer += dt;
   incomeTimer += dt;
   expenseTimer += dt;
@@ -5319,6 +5377,17 @@ ui.pauseBtn.addEventListener("click", () => {
   ui.pauseBtn.textContent = paused ? "再開" : "停止";
 });
 
+ui.titleStartBtn.addEventListener("click", startGame);
+ui.titleMusicBtn.addEventListener("click", toggleOpeningMusic);
+ui.gameMusicBtn.addEventListener("click", toggleOpeningMusic);
+ui.openingMusic.addEventListener("play", renderOpeningMusicControls);
+ui.openingMusic.addEventListener("pause", renderOpeningMusicControls);
+ui.openingMusic.addEventListener("ended", renderOpeningMusicControls);
+ui.openingMusic.addEventListener("error", () => {
+  openingMusicAvailable = false;
+  renderOpeningMusicControls();
+});
+
 ui.roundBtn.addEventListener("click", settleRound);
 ui.closeReportBtn.addEventListener("click", closeRoundReport);
 ui.continueReportBtn.addEventListener("click", closeRoundReport);
@@ -5413,6 +5482,7 @@ renderGuestLog();
 updateUndoButton();
 syncStaffAgents();
 computeStats();
+prepareOpeningMusic();
 if (localStorage.getItem(TUTORIAL_KEY) !== "1") openTutorial(0);
 window.parkDebug = {
   state,
@@ -5462,6 +5532,8 @@ window.parkDebug = {
       marketingLeads: Math.ceil(state.marketing.remainingLeads),
       marketingAttracted: Math.floor(state.marketing.attractedGuests),
       marketingRefusals: Math.floor(state.marketing.refusals),
+      titleScreenActive,
+      openingMusicAvailable,
       dayCondition: state.dayCondition.current,
       nextDayCondition: state.dayCondition.next,
       selectedTool,
@@ -5527,6 +5599,11 @@ window.parkDebug = {
   marketingFit,
   marketingFitHint,
   chooseGuestArchetype,
+  startGame,
+  prepareOpeningMusic,
+  playOpeningMusic,
+  toggleOpeningMusic,
+  renderOpeningMusicControls,
   currentDayCondition,
   rollDayCondition,
   setDayCondition,

@@ -8,7 +8,11 @@ const types = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
-  ".png": "image/png"
+  ".png": "image/png",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".m4a": "audio/mp4",
+  ".ogg": "audio/ogg"
 };
 
 const server = http.createServer((req, res) => {
@@ -24,6 +28,10 @@ const server = http.createServer((req, res) => {
     return;
   }
   res.writeHead(200, { "Content-Type": types[extname(path)] || "application/octet-stream" });
+  if (req.method === "HEAD") {
+    res.end();
+    return;
+  }
   createReadStream(path).pipe(res);
 });
 

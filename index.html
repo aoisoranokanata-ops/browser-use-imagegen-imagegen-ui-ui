@@ -10,6 +10,22 @@
   <main id="app">
     <canvas id="game" aria-label="アイソメトリック視点のテーマパーク経営シミュレーション"></canvas>
 
+    <section id="titleScreen" class="title-screen" aria-label="ゆめじまパーク タイトル画面">
+      <img src="assets/title-screen.png" alt="朝日に輝くゆめじまパークの全景" />
+      <div class="title-copy">
+        <h1>ゆめじまパーク</h1>
+        <p>夢を建て、笑顔を運ぶ。</p>
+      </div>
+      <div class="title-actions">
+        <button id="titleStartBtn" class="title-start" type="button">
+          <span aria-hidden="true">▶</span>
+          <b>パークを開く</b>
+        </button>
+        <button id="titleMusicBtn" class="title-music" type="button" aria-label="オープニング曲を再生" title="オープニング曲を再生" hidden>♪</button>
+      </div>
+    </section>
+    <audio id="openingMusic" preload="none" loop></audio>
+
     <section class="topbar" aria-label="パーク状況">
       <div class="brand">
         <span class="mark"></span>
@@ -25,6 +41,7 @@
         <span><b id="queue">0</b><small>待ち列</small></span>
         <span><b id="guests">0</b><small>ゲスト</small></span>
       </div>
+      <button id="gameMusicBtn" class="game-music-btn" type="button" aria-label="オープニング曲を停止" title="オープニング曲を停止" hidden>♪</button>
     </section>
 
     <section class="hero-select" aria-label="主人公選択">
