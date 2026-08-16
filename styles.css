@@ -437,6 +437,64 @@ button.active { background: #26313f; color: #fff8df; }
 .next-unlock span { color: var(--muted); }
 .next-unlock b { text-align: right; }
 
+.land-panel {
+  margin: 12px 0;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.land-heading,
+.land-heading > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.land-heading { align-items: center; }
+.land-heading > span { flex-direction: column; gap: 1px; }
+.land-heading strong { font-size: 12px; }
+.land-heading small { color: var(--muted); font-size: 8px; }
+.land-heading > b { color: var(--teal); font-size: 10px; }
+
+.land-zone-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 7px;
+}
+
+.land-zone-list button {
+  min-width: 0;
+  min-height: 43px;
+  padding: 6px 4px;
+  border-color: rgba(38, 49, 63, .16);
+  background: rgba(255, 255, 255, .54);
+}
+
+.land-zone-list span,
+.land-zone-list b {
+  display: block;
+  overflow-wrap: anywhere;
+  letter-spacing: 0;
+}
+
+.land-zone-list span { font-size: 8px; }
+.land-zone-list b { margin-top: 2px; color: var(--coral); font-size: 9px; }
+.land-zone-list button.available { border-color: rgba(73, 171, 194, .72); background: rgba(73, 171, 194, .11); }
+.land-zone-list button.owned { border-color: rgba(102, 184, 107, .48); background: rgba(102, 184, 107, .1); }
+.land-zone-list button.owned b { color: var(--green); }
+.land-zone-list button.locked { opacity: .58; }
+.land-panel > p { margin: 6px 0 0; color: var(--muted); font-size: 8px; line-height: 1.4; }
+
+.land-inspect-purchase {
+  width: 100%;
+  margin-top: 9px;
+  border-color: rgba(73, 171, 194, .65);
+  background: rgba(73, 171, 194, .12);
+  color: var(--ink);
+  font-weight: 900;
+}
+
 [data-tool].locked {
   opacity: .45;
   filter: grayscale(.75);

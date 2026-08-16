@@ -76,6 +76,9 @@ const ui = {
   ratingTransit: document.getElementById("ratingTransit"),
   goalList: document.getElementById("goalList"),
   nextUnlock: document.getElementById("nextUnlock"),
+  landOwned: document.getElementById("landOwned"),
+  landZoneList: document.getElementById("landZoneList"),
+  landHint: document.getElementById("landHint"),
   roundReport: document.getElementById("roundReport"),
   reportRound: document.getElementById("reportRound"),
   reportStars: document.getElementById("reportStars"),
@@ -171,6 +174,13 @@ const H = 28;
 const SAVE_KEY = "yumeshimaParkSaveV1";
 const TUTORIAL_KEY = "yumeshimaParkTutorialV1";
 const OPENING_MUSIC_PATH = "assets/opening-theme.mp3";
+const LAND_ZONES = {
+  core: { label: "ウェルカム区画", cost: 0, stars: 1, contains: (x, y) => x < 18 && y < 20, center: [9, 10] },
+  east: { label: "サンライズ区画", cost: 4500, stars: 3, contains: (x, y) => x >= 18 && y < 20, center: [23, 10] },
+  garden: { label: "ガーデン区画", cost: 7000, stars: 4, contains: (x, y) => x < 18 && y >= 20, center: [9, 24] },
+  lakeside: { label: "レイクサイド区画", cost: 10500, stars: 5, contains: (x, y) => x >= 18 && y >= 20, center: [23, 24] }
+};
+const LAND_ZONE_ORDER = ["core", "east", "garden", "lakeside"];
 const DIFFICULTY_CONFIGS = {
   beginner: { label: "はじめて", initialMoney: 30000, costMultiplier: .8, graceRounds: 2, graceMultiplier: .5 },
   standard: { label: "標準", initialMoney: 24000, costMultiplier: .95, graceRounds: 1, graceMultiplier: .75 },
@@ -318,9 +328,10 @@ const GOAL_DEFINITIONS = {
   clean: { label: "3人以上を迎え清潔さ90%", target: 90, reward: 500, value: metrics => metrics.roundGuests >= 3 ? metrics.clean : 0, format: value => `${Math.round(value)}%` },
   satisfaction: { label: "3人以上を迎え満足度85%", target: 85, reward: 800, value: metrics => metrics.roundGuests >= 3 ? metrics.happy : 0, format: value => `${Math.round(value)}%` },
   ride_variety: { label: "3種類のライドを運営", target: 3, reward: 900, value: metrics => metrics.rideTypes, format: value => `${Math.floor(value)}種類` },
-  transit: { label: "交通利用を30人まで伸ばす", target: 30, reward: 900, value: metrics => metrics.transitRiders, format: value => `${Math.floor(value)}人` }
+  transit: { label: "交通利用を30人まで伸ばす", target: 30, reward: 900, value: metrics => metrics.transitRiders, format: value => `${Math.floor(value)}人` },
+  expansion: { label: "用地を2区画まで拡張", target: 2, reward: 1100, value: metrics => metrics.landZones, format: value => `${Math.floor(value)}区画` }
 };
-const GOAL_ORDER = ["profit", "guests", "clean", "satisfaction", "ride_variety", "transit"];
+const GOAL_ORDER = ["profit", "guests", "clean", "satisfaction", "ride_variety", "transit", "expansion"];
 const tools = {
   inspect: { cost: 0, label: "調べる" },
   path: { cost: 80, label: "通路" },
@@ -383,6 +394,7 @@ let stopSequence = 0;
 let staffSequence = 0;
 let transitRenderSignature = "";
 let progressionRenderSignature = "";
+let landRenderSignature = "";
 const undoStack = [];
 
 const state = {
@@ -458,13 +470,73 @@ const state = {
     completedGoalIds: [],
     roundStartServed: 0,
     reports: []
-  }
+  },
+  expansion: { unlockedZoneIds: ["core"] }
 };
 
 function makeTile(x, y) {
   const pond = x > 20 && y > 18 && x + y < 48;
   const baseTerrain = pond ? "water" : "grass";
   return { x, y, terrain: baseTerrain, baseTerrain, object: null, path: false, transitTrack: null, litter: 0, traffic: 0, moodTotal: 0, moodWeight: 0 };
+}
+
+function landZoneIdAt(x, y) {
+  return LAND_ZONE_ORDER.find(zoneId => LAND_ZONES[zoneId].contains(x, y)) || "core";
+}
+
+function landZoneForTile(tile) {
+  return LAND_ZONES[landZoneIdAt(tile?.x ?? 0, tile?.y ?? 0)];
+}
+
+function isLandZoneUnlocked(zoneId) {
+  return state.expansion.unlockedZoneIds.includes(zoneId);
+}
+
+function isTileUnlocked(tile) {
+  return !!tile && isLandZoneUnlocked(landZoneIdAt(tile.x, tile.y));
+}
+
+function landZoneHasDevelopment(zoneId) {
+  return state.tiles.some(tile => landZoneIdAt(tile.x, tile.y) === zoneId
+    && (tile.object || tile.path || tile.transitTrack || tile.terrain !== tile.baseTerrain));
+}
+
+function restoreExpansionState(savedExpansion) {
+  const savedZones = Array.isArray(savedExpansion?.unlockedZoneIds)
+    ? savedExpansion.unlockedZoneIds.filter(zoneId => LAND_ZONES[zoneId])
+    : [];
+  const legacyDevelopedZones = LAND_ZONE_ORDER.filter(zoneId => landZoneHasDevelopment(zoneId));
+  state.expansion = {
+    unlockedZoneIds: [...new Set(["core", ...savedZones, ...legacyDevelopedZones])]
+  };
+  landRenderSignature = "";
+}
+
+function landZoneCost(zoneId) {
+  return Number(LAND_ZONES[zoneId]?.cost || 0);
+}
+
+function purchaseLandZone(zoneId, options = {}) {
+  const zone = LAND_ZONES[zoneId];
+  if (!zone || zoneId === "core" || isLandZoneUnlocked(zoneId)) return false;
+  if (state.progression.bestStars < zone.stars) {
+    if (!options.silent) toast(`${zone.label}はパーク評価${zone.stars}で購入できます`);
+    return false;
+  }
+  const cost = landZoneCost(zoneId);
+  if (state.money < cost) {
+    if (!options.silent) toast(`${zone.label}の購入資金が足りません`);
+    return false;
+  }
+  const historyBefore = options.recordHistory === false ? null : captureHistoryState();
+  state.money -= cost;
+  state.expansion.unlockedZoneIds.push(zoneId);
+  landRenderSignature = "";
+  pushUndo(historyBefore);
+  if (selectedTile && landZoneIdAt(selectedTile.x, selectedTile.y) === zoneId) inspect(selectedTile);
+  computeStats();
+  if (!options.silent) toast(`${zone.label}を開放しました`);
+  return true;
 }
 
 for (let y = 0; y < H; y++) {
@@ -784,6 +856,35 @@ function drawAnalysisOverlay(tile, point, scale) {
   diamond(point.x, point.y, fill, "rgba(255,255,255,.16)");
 }
 
+function drawLockedLand(tile, point) {
+  if (isTileUnlocked(tile)) return;
+  const edge = tile.x === 18 || tile.y === 20 ? "rgba(255,255,255,.42)" : "rgba(38,49,61,.08)";
+  diamond(point.x, point.y, "rgba(54,75,78,.42)", edge);
+}
+
+function drawLandZoneLabels() {
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (const zoneId of LAND_ZONE_ORDER.slice(1)) {
+    if (isLandZoneUnlocked(zoneId)) continue;
+    const zone = LAND_ZONES[zoneId];
+    const point = iso(zone.center[0], zone.center[1], 3);
+    const width = 132 * clamp(camera.zoom, .72, 1.08);
+    const height = 39 * clamp(camera.zoom, .72, 1.08);
+    ctx.fillStyle = "rgba(38,49,61,.86)";
+    roundRect(point.x - width / 2, point.y - height / 2, width, height, 6);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = `800 ${Math.max(9, 11 * camera.zoom)}px system-ui`;
+    ctx.fillText(zone.label, point.x, point.y - 6 * camera.zoom);
+    ctx.fillStyle = "#f1d083";
+    ctx.font = `700 ${Math.max(8, 9 * camera.zoom)}px system-ui`;
+    ctx.fillText(`評価${zone.stars} ・ $${zone.cost.toLocaleString()}`, point.x, point.y + 8 * camera.zoom);
+  }
+  ctx.restore();
+}
+
 function drawWorld() {
   const grad = ctx.createLinearGradient(0, 0, 0, innerHeight);
   grad.addColorStop(0, "#bfead9");
@@ -800,7 +901,8 @@ function drawWorld() {
     diamond(p.x, p.y, fill);
     if (tile.path) drawPathTrim(p.x, p.y);
     if (tile.terrain === "water") drawWater(p.x, p.y);
-    drawAnalysisOverlay(tile, p, analysisScale);
+    drawLockedLand(tile, p);
+    if (isTileUnlocked(tile)) drawAnalysisOverlay(tile, p, analysisScale);
     if (tile.litter > 0.5) drawLitter(p.x, p.y, tile.litter);
     if (tile.transitTrack === "monorail") drawMonorailTrack(tile);
     if (tile.transitTrack === "park_train") drawParkTrainTrack(tile);
@@ -811,6 +913,7 @@ function drawWorld() {
     }
     if (hovered === tile) drawPlacementPreview(tile, p);
   }
+  drawLandZoneLabels();
   drawTransitRoute();
   drawBuses();
   drawMonorails();
@@ -3617,6 +3720,7 @@ function getManagementMetrics() {
     transitCapacity: busNetwork.fleet * TRANSIT_MODE_CONFIGS.bus.capacity
       + monorailNetwork.fleet * TRANSIT_MODE_CONFIGS.monorail.capacity
       + parkTrainNetwork.fleet * TRANSIT_MODE_CONFIGS.park_train.capacity,
+    landZones: state.expansion.unlockedZoneIds.length,
     roundGuests: Math.max(0, state.guestsServed - Number(state.progression.roundStartServed || 0))
   };
 }
@@ -3624,7 +3728,8 @@ function getManagementMetrics() {
 function calculateParkRating(metrics = getManagementMetrics()) {
   const experience = clamp(metrics.happy * .22 + metrics.clean * .13, 0, 35);
   const finance = clamp(metrics.net >= 0 ? 6 + metrics.net / 100 : 6 + metrics.net / 250, 0, 20);
-  const facilities = clamp(metrics.rideTypes * 3 + metrics.rides * .8 + Math.min(3, metrics.amenities * .5) + Math.min(4, metrics.roundGuests * .25), 0, 15);
+  const facilities = clamp(metrics.rideTypes * 3 + metrics.rides * .8 + Math.min(3, metrics.amenities * .5)
+    + Math.min(4, metrics.roundGuests * .25) + Math.max(0, metrics.landZones - 1) * 1.2, 0, 15);
   const scenery = clamp(metrics.scenery * .14, 0, 15);
   const healthyTransit = metrics.transitWaiting <= metrics.transitCapacity ? 2 : 0;
   const transit = clamp(metrics.connectedStops * 2 + metrics.busFleet + Math.min(7, metrics.transitRiders * .05) + healthyTransit, 0, 15);
@@ -3743,6 +3848,37 @@ function renderProgressionPanel(rating, metrics) {
   }
 }
 
+function renderLandExpansionPanel() {
+  const owned = state.expansion.unlockedZoneIds.length;
+  const candidates = LAND_ZONE_ORDER.slice(1);
+  const rows = candidates.map(zoneId => {
+    const zone = LAND_ZONES[zoneId];
+    const unlocked = isLandZoneUnlocked(zoneId);
+    const eligible = state.progression.bestStars >= zone.stars;
+    const affordable = state.money >= landZoneCost(zoneId);
+    const stateClass = unlocked ? "owned" : eligible && affordable ? "available" : "locked";
+    const meta = unlocked ? "所有済み" : eligible ? `$${zone.cost.toLocaleString()}` : `評価${zone.stars}`;
+    return `<button class="${stateClass}" data-land-zone="${zoneId}" ${unlocked || !eligible || !affordable ? "disabled" : ""}><span>${zone.label}</span><b>${meta}</b></button>`;
+  }).join("");
+  const next = candidates
+    .map(zoneId => ({ zoneId, zone: LAND_ZONES[zoneId] }))
+    .find(entry => !isLandZoneUnlocked(entry.zoneId));
+  let hint = "全区画を開放しました。島全体を自由に発展させられます。";
+  if (next) {
+    hint = state.progression.bestStars < next.zone.stars
+      ? `${next.zone.label}は評価${next.zone.stars}で購入できます。`
+      : state.money < next.zone.cost
+        ? `${next.zone.label}まであと$${(next.zone.cost - state.money).toLocaleString()}です。`
+        : `${next.zone.label}を購入して建設範囲を広げられます。`;
+  }
+  const signature = `${owned}:${rows}:${hint}`;
+  if (signature === landRenderSignature) return;
+  ui.landOwned.textContent = `${owned} / ${LAND_ZONE_ORDER.length}区画`;
+  ui.landZoneList.innerHTML = rows;
+  ui.landHint.textContent = hint;
+  landRenderSignature = signature;
+}
+
 function saveGame() {
   const save = {
     version: 1,
@@ -3775,6 +3911,7 @@ function saveGame() {
     })),
     transit: cloneTransitState(),
     progression: JSON.parse(JSON.stringify(state.progression)),
+    expansion: { unlockedZoneIds: [...state.expansion.unlockedZoneIds] },
     tiles: state.tiles.map(tile => ({
       terrain: tile.terrain,
       path: tile.path,
@@ -3879,6 +4016,7 @@ function loadGame() {
       tile.moodWeight = Math.max(0, Number(savedTile.moodWeight) || 0);
       tile.object = restoreObject(savedTile.object);
     });
+    restoreExpansionState(save.expansion);
     restoreTransitState(save.transit);
     transitRenderSignature = "";
     rebuildRideList();
@@ -4083,6 +4221,7 @@ function computeStats() {
   renderTransitPanel();
   const managementMetrics = getManagementMetrics();
   renderProgressionPanel(calculateParkRating(managementMetrics), managementMetrics);
+  renderLandExpansionPanel();
 }
 
 function analysisTileLabel(tile) {
@@ -4273,6 +4412,10 @@ function renderTransitPanel() {
 function getPlacementStatus(tile, toolName = selectedTool) {
   if (!tile) return { valid: false, reason: "マップ外です" };
   if (toolName === "inspect") return { valid: true };
+  if (!isTileUnlocked(tile)) {
+    const zone = landZoneForTile(tile);
+    return { valid: false, reason: `${zone.label}は未購入です` };
+  }
   if (toolName === "remove") {
     const removable = !!tile.object || !!tile.transitTrack || (tile.path && tile !== entrance) || tile.terrain !== tile.baseTerrain;
     return { valid: removable, reason: removable ? "" : "撤去できる物がありません" };
@@ -4337,6 +4480,7 @@ function captureHistoryState() {
   return {
     money: state.money,
     finance: { ...state.finance },
+    expansion: { unlockedZoneIds: [...state.expansion.unlockedZoneIds] },
     transit: cloneTransitState(),
     stopSequence,
     selectedTileIndex: selectedTile ? state.tiles.indexOf(selectedTile) : -1,
@@ -4391,6 +4535,8 @@ function undoLastBuild() {
   }
   state.money = snapshot.money;
   state.finance = { ...snapshot.finance };
+  state.expansion = { unlockedZoneIds: [...(snapshot.expansion?.unlockedZoneIds || ["core"])] };
+  landRenderSignature = "";
   state.transit = JSON.parse(JSON.stringify(snapshot.transit));
   stopSequence = snapshot.stopSequence;
   snapshot.rides.forEach(({ ride, data }) => Object.assign(ride, data, { queue: [...data.queue], riders: [...data.riders] }));
@@ -4538,6 +4684,21 @@ function inspect(tile) {
   let title = "芝生タイル";
   let body = "通路、ライド、景観、水辺を配置できる空き地です。";
   let controls = "";
+  if (!isTileUnlocked(tile)) {
+    const zoneId = landZoneIdAt(tile.x, tile.y);
+    const zone = LAND_ZONES[zoneId];
+    const eligible = state.progression.bestStars >= zone.stars;
+    const affordable = state.money >= landZoneCost(zoneId);
+    title = `${zone.label}・未購入`;
+    body = eligible
+      ? affordable
+        ? `新しい建設用地です。$${zone.cost.toLocaleString()}で開放できます。`
+        : `購入には$${zone.cost.toLocaleString()}必要です。あと$${Math.max(0, zone.cost - state.money).toLocaleString()}貯めましょう。`
+      : `パーク評価${zone.stars}で購入できます。現在の最高評価は${state.progression.bestStars}です。`;
+    controls = `<button class="land-inspect-purchase" data-action="land-purchase" data-zone="${zoneId}" ${!eligible || !affordable ? "disabled" : ""}>${eligible ? `$${zone.cost.toLocaleString()}で区画を購入` : `評価${zone.stars}で購入可能`}</button>`;
+    ui.selected.innerHTML = `<strong>${title}</strong><p>${body}</p>${controls}`;
+    return;
+  }
   if (tile.terrain === "water") {
     title = "水辺の庭";
     body = "景観値を少し高めます。ゲストはつながった通路を使って水辺を回り込みます。";
@@ -5428,6 +5589,10 @@ ui.shopDemandForecast.addEventListener("click", event => {
   const kind = event.target.closest("[data-shop-demand-kind]")?.dataset.shopDemandKind;
   if (kind) handleShopDemandAction(kind);
 });
+ui.landZoneList.addEventListener("click", event => {
+  const zoneId = event.target.closest("[data-land-zone]")?.dataset.landZone;
+  if (zoneId) purchaseLandZone(zoneId);
+});
 ui.analysisNormal.addEventListener("click", () => setAnalysisMode("normal"));
 ui.analysisCrowding.addEventListener("click", () => setAnalysisMode("crowding"));
 ui.analysisHygiene.addEventListener("click", () => setAnalysisMode("hygiene"));
@@ -5452,6 +5617,7 @@ ui.selected.addEventListener("click", event => {
   if (action === "ride-open-toggle") toggleSelectedRideOpen();
   if (action === "ride-policy") setSelectedRidePolicy(event.target.closest("[data-policy]")?.dataset.policy);
   if (action === "ride-upgrade") upgradeSelectedRide();
+  if (action === "land-purchase") purchaseLandZone(event.target.closest("[data-zone]")?.dataset.zone);
   if (action === "route-toggle") toggleStopInRoute();
   if (action === "route-up") moveStopInRoute(selectedTile, -1);
   if (action === "route-down") moveStopInRoute(selectedTile, 1);
@@ -5583,6 +5749,8 @@ window.parkDebug = {
       unlockedTools: [...state.progression.unlockedTools],
       activeGoals: [...state.progression.activeGoalIds],
       completedGoals: [...state.progression.completedGoalIds],
+      landZones: [...state.expansion.unlockedZoneIds],
+      ownedLandTiles: state.tiles.filter(isTileUnlocked).length,
       paths: state.tiles.filter(t => t.path).length,
       scenery: sceneryScore(),
       benchUses: Math.floor(state.tiles.filter(tile => tile.object?.type === "bench").reduce((sum, tile) => sum + Number(tile.object.usage || 0), 0)),
@@ -5615,6 +5783,11 @@ window.parkDebug = {
   setAnalysisMode,
   getAnalysisMetrics,
   renderAnalysisPanel,
+  renderLandExpansionPanel,
+  purchaseLandZone,
+  isLandZoneUnlocked,
+  isTileUnlocked,
+  landZoneIdAt,
   tileHygieneRisk,
   tileRecentSatisfaction,
   analysisTileValue,

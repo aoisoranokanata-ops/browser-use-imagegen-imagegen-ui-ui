@@ -566,6 +566,24 @@ assert.equal(state.round, roundBefore + 3);
 assert.equal(state.money, postBonusMoney, "empty rounds must not generate free cash");
 
 state.money = 50000;
+const eastLandTile = state.tiles.find(tile => tile.x === 18 && tile.y === 14);
+assert.equal(debug.summary().landZones.length, 1);
+assert.equal(debug.getPlacementStatus(eastLandTile, "path").valid, false, "construction should stop at unowned land");
+assert.match(debug.getPlacementStatus(eastLandTile, "path").reason, /未購入/);
+const moneyBeforeLandPurchase = state.money;
+assert.equal(debug.purchaseLandZone("east", { silent: true }), true);
+assert.equal(state.money, moneyBeforeLandPurchase - 4500);
+assert.equal(debug.isTileUnlocked(eastLandTile), true);
+assert.equal(element("landOwned").textContent, "2 / 4区画");
+assert.equal(debug.undoLastBuild(), true, "land purchases should be undoable");
+assert.equal(debug.isTileUnlocked(eastLandTile), false);
+assert.equal(state.money, moneyBeforeLandPurchase);
+assert.equal(debug.purchaseLandZone("east", { silent: true }), true);
+debug.saveGame();
+state.expansion.unlockedZoneIds = ["core"];
+debug.loadGame();
+assert.equal(debug.isLandZoneUnlocked("east"), true, "purchased land should survive save/load");
+
 debug.setTool("path");
 const dragStart = debug.screenOfTile(16, 14);
 const dragEnd = debug.screenOfTile(18, 14);
@@ -956,10 +974,15 @@ assert.equal(followupReport.ratingBonus, 0);
 debug.closeRoundReport();
 
 const moneyBeforeEmptyRound = state.money;
+const expansionReport = debug.settleRound();
+assert.equal(expansionReport.goalReward, 1100, "land expansion should become a later progression goal");
+debug.closeRoundReport();
+const moneyBeforeRepeatedRound = state.money;
 const emptyReport = debug.settleRound();
 assert.equal(emptyReport.goalReward, 0, "completed goals must not pay repeatedly");
 assert.equal(emptyReport.ratingBonus, 0, "an empty round must not receive rating rewards");
-assert.equal(state.money, moneyBeforeEmptyRound);
+assert.equal(state.money, moneyBeforeRepeatedRound);
+assert.equal(state.money, moneyBeforeEmptyRound + 1100);
 debug.closeRoundReport();
 
 debug.saveGame();
@@ -971,10 +994,12 @@ assert.equal(state.tiles.filter(tile => tile.transitTrack === "monorail").length
 assert.equal(state.tiles.filter(tile => tile.object?.type === "monorail_station").length, 2);
 assert.equal(state.tiles.filter(tile => tile.transitTrack === "park_train").length, 7);
 assert.equal(state.tiles.filter(tile => tile.object?.type === "train_station").length, 2);
-assert.deepEqual([...state.progression.completedGoalIds].sort(), ["clean", "guests", "profit", "ride_variety", "satisfaction", "transit"]);
+assert.deepEqual([...state.progression.completedGoalIds].sort(), ["clean", "expansion", "guests", "profit", "ride_variety", "satisfaction", "transit"]);
 assert.deepEqual(state.progression.activeGoalIds, []);
 
 const modernSave = storage.get("yumeshimaParkSaveV1");
+const modernCurrentCondition = state.dayCondition.current;
+const modernNextCondition = state.dayCondition.next;
 const legacySave = JSON.parse(modernSave);
 delete legacySave.progression;
 delete legacySave.staffRoster;
@@ -982,6 +1007,7 @@ delete legacySave.marketing;
 delete legacySave.dayCondition;
 delete legacySave.finance.marketingExpenses;
 delete legacySave.analysisMode;
+delete legacySave.expansion;
 legacySave.tiles.forEach(tile => {
   delete tile.traffic;
   delete tile.moodTotal;
@@ -1017,6 +1043,7 @@ debug.loadGame();
 assert.ok(state.progression.bestStars >= 1);
 assert.ok(state.progression.activeGoalIds.length > 0);
 assert.ok(state.progression.unlockedTools.includes("coaster"), "existing advanced rides should migrate as unlocked");
+assert.ok(state.expansion.unlockedZoneIds.includes("east"), "legacy saves should keep developed districts open");
 const migratedKiosk = state.tiles.find(tile => tile.object?.type === "kiosk").object;
 assert.equal(migratedKiosk.maxStock, 60, "legacy beginner shops should receive the larger capacity");
 assert.equal(migratedKiosk.autoRestock, true);
@@ -1046,7 +1073,7 @@ assert.ok(state.tiles.every(tile => tile.traffic === 0 && tile.moodWeight === 0)
 storage.set("yumeshimaParkSaveV1", modernSave);
 debug.loadGame();
 assert.equal(state.progression.bestStars, 5);
-assert.equal(state.dayCondition.current, "heatwave");
-assert.equal(state.dayCondition.next, "sunny");
+assert.equal(state.dayCondition.current, modernCurrentCondition);
+assert.equal(state.dayCondition.next, modernNextCondition);
 
 console.log("economy smoke test: OK", JSON.stringify(debug.summary()));
