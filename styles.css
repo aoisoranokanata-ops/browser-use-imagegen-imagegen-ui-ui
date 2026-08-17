@@ -486,6 +486,78 @@ button.active { background: #26313f; color: #fff8df; }
 .land-zone-list button.locked { opacity: .58; }
 .land-panel > p { margin: 6px 0 0; color: var(--muted); font-size: 8px; line-height: 1.4; }
 
+.land-theme-editor {
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(38, 49, 63, .09);
+}
+
+.land-theme-heading,
+.land-theme-heading > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.land-theme-heading { align-items: center; }
+.land-theme-heading > span { flex-direction: column; gap: 1px; }
+.land-theme-heading small { color: var(--muted); font-size: 8px; font-weight: 800; }
+.land-theme-heading strong { font-size: 11px; }
+.land-theme-heading > b { font-size: 9px; }
+
+.land-theme-zone-tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.land-theme-zone-tabs button {
+  flex: 0 0 auto;
+  min-height: 31px;
+  padding: 4px 8px;
+  font-size: 8px;
+}
+
+.land-theme-zone-tabs small { display: block; margin-top: 1px; color: var(--muted); font-size: 7px; }
+.land-theme-zone-tabs button.active small { color: rgba(255, 255, 255, .74); }
+
+.land-theme-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.land-theme-options button {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 32px;
+  padding: 5px 6px;
+  background: rgba(255, 255, 255, .52);
+  text-align: left;
+}
+
+.land-theme-options i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.theme-family { background: #ef6f61; }
+.theme-adventure { background: #d99b36; }
+.theme-garden { background: #66a85f; }
+.theme-market { background: #49abc2; }
+.land-theme-options span { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 8px; white-space: nowrap; }
+.land-theme-options b { color: var(--coral); font-size: 8px; }
+.land-theme-options button.active { background: rgba(38, 49, 63, .9); }
+.land-theme-options button.active b { color: #f1d083; }
+.land-theme-editor > p { margin: 6px 0 0; color: var(--muted); font-size: 8px; line-height: 1.4; }
+
 .land-inspect-purchase {
   width: 100%;
   margin-top: 9px;

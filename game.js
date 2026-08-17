@@ -79,6 +79,11 @@ const ui = {
   landOwned: document.getElementById("landOwned"),
   landZoneList: document.getElementById("landZoneList"),
   landHint: document.getElementById("landHint"),
+  landThemeZoneName: document.getElementById("landThemeZoneName"),
+  landThemeCurrent: document.getElementById("landThemeCurrent"),
+  landThemeZoneTabs: document.getElementById("landThemeZoneTabs"),
+  landThemeOptions: document.getElementById("landThemeOptions"),
+  landThemeHint: document.getElementById("landThemeHint"),
   roundReport: document.getElementById("roundReport"),
   reportRound: document.getElementById("reportRound"),
   reportStars: document.getElementById("reportStars"),
@@ -175,12 +180,34 @@ const SAVE_KEY = "yumeshimaParkSaveV1";
 const TUTORIAL_KEY = "yumeshimaParkTutorialV1";
 const OPENING_MUSIC_PATH = "assets/opening-theme.mp3";
 const LAND_ZONES = {
-  core: { label: "ウェルカム区画", cost: 0, stars: 1, contains: (x, y) => x < 18 && y < 20, center: [9, 10] },
+  core: { label: "ウェルカム区画", cost: 0, stars: 1, contains: (x, y) => x < 18 && y < 20, center: [9, 10], labelCenter: [4, 4] },
   east: { label: "サンライズ区画", cost: 4500, stars: 3, contains: (x, y) => x >= 18 && y < 20, center: [23, 10] },
   garden: { label: "ガーデン区画", cost: 7000, stars: 4, contains: (x, y) => x < 18 && y >= 20, center: [9, 24] },
   lakeside: { label: "レイクサイド区画", cost: 10500, stars: 5, contains: (x, y) => x >= 18 && y >= 20, center: [23, 24] }
 };
 const LAND_ZONE_ORDER = ["core", "east", "garden", "lakeside"];
+const LAND_THEMES = {
+  family: {
+    label: "ファミリー", cost: 900, target: "family", color: "#ef6f61", satisfaction: 4,
+    rideBias: { carousel: 9, teacups: 7, wheel: 3 },
+    hint: "子ども連れが穏やかな遊具を選びやすく、体験後の満足度が上がります。"
+  },
+  adventure: {
+    label: "アドベンチャー", cost: 1200, target: "thrill", color: "#d99b36", satisfaction: 5,
+    rideBias: { coaster: 11, wheel: 6 },
+    hint: "絶叫好きがスリル系ライドへ集まり、体験後の満足度が上がります。"
+  },
+  garden: {
+    label: "ガーデン", cost: 1000, target: "scenic", color: "#66a85f", satisfaction: 5,
+    rideBias: { wheel: 7, carousel: 4 },
+    hint: "景観重視のゲストが景色を楽しめる施設を選び、満足度が上がります。"
+  },
+  market: {
+    label: "マーケット", cost: 1100, target: "foodie", color: "#49abc2", satisfaction: 4,
+    rideBias: {},
+    hint: "グルメ客が区画内の売店を優先し、商品価格への許容度も少し上がります。"
+  }
+};
 const DIFFICULTY_CONFIGS = {
   beginner: { label: "はじめて", initialMoney: 30000, costMultiplier: .8, graceRounds: 2, graceMultiplier: .5 },
   standard: { label: "標準", initialMoney: 24000, costMultiplier: .95, graceRounds: 1, graceMultiplier: .75 },
@@ -329,9 +356,10 @@ const GOAL_DEFINITIONS = {
   satisfaction: { label: "3人以上を迎え満足度85%", target: 85, reward: 800, value: metrics => metrics.roundGuests >= 3 ? metrics.happy : 0, format: value => `${Math.round(value)}%` },
   ride_variety: { label: "3種類のライドを運営", target: 3, reward: 900, value: metrics => metrics.rideTypes, format: value => `${Math.floor(value)}種類` },
   transit: { label: "交通利用を30人まで伸ばす", target: 30, reward: 900, value: metrics => metrics.transitRiders, format: value => `${Math.floor(value)}人` },
-  expansion: { label: "用地を2区画まで拡張", target: 2, reward: 1100, value: metrics => metrics.landZones, format: value => `${Math.floor(value)}区画` }
+  expansion: { label: "用地を2区画まで拡張", target: 2, reward: 1100, value: metrics => metrics.landZones, format: value => `${Math.floor(value)}区画` },
+  themes: { label: "2区画にテーマを設定", target: 2, reward: 1200, value: metrics => metrics.themedLandZones, format: value => `${Math.floor(value)}区画` }
 };
-const GOAL_ORDER = ["profit", "guests", "clean", "satisfaction", "ride_variety", "transit", "expansion"];
+const GOAL_ORDER = ["profit", "guests", "clean", "satisfaction", "ride_variety", "transit", "expansion", "themes"];
 const tools = {
   inspect: { cost: 0, label: "調べる" },
   path: { cost: 80, label: "通路" },
@@ -395,6 +423,7 @@ let staffSequence = 0;
 let transitRenderSignature = "";
 let progressionRenderSignature = "";
 let landRenderSignature = "";
+let selectedLandZoneId = "core";
 const undoStack = [];
 
 const state = {
@@ -471,7 +500,7 @@ const state = {
     roundStartServed: 0,
     reports: []
   },
-  expansion: { unlockedZoneIds: ["core"] }
+  expansion: { unlockedZoneIds: ["core"], zoneThemes: {} }
 };
 
 function makeTile(x, y) {
@@ -506,9 +535,17 @@ function restoreExpansionState(savedExpansion) {
     ? savedExpansion.unlockedZoneIds.filter(zoneId => LAND_ZONES[zoneId])
     : [];
   const legacyDevelopedZones = LAND_ZONE_ORDER.filter(zoneId => landZoneHasDevelopment(zoneId));
+  const zoneThemes = {};
+  for (const [zoneId, themeId] of Object.entries(savedExpansion?.zoneThemes || {})) {
+    if (LAND_ZONES[zoneId] && LAND_THEMES[themeId] && ["core", ...savedZones, ...legacyDevelopedZones].includes(zoneId)) {
+      zoneThemes[zoneId] = themeId;
+    }
+  }
   state.expansion = {
-    unlockedZoneIds: [...new Set(["core", ...savedZones, ...legacyDevelopedZones])]
+    unlockedZoneIds: [...new Set(["core", ...savedZones, ...legacyDevelopedZones])],
+    zoneThemes
   };
+  if (!isLandZoneUnlocked(selectedLandZoneId)) selectedLandZoneId = "core";
   landRenderSignature = "";
 }
 
@@ -531,12 +568,96 @@ function purchaseLandZone(zoneId, options = {}) {
   const historyBefore = options.recordHistory === false ? null : captureHistoryState();
   state.money -= cost;
   state.expansion.unlockedZoneIds.push(zoneId);
+  selectedLandZoneId = zoneId;
   landRenderSignature = "";
   pushUndo(historyBefore);
   if (selectedTile && landZoneIdAt(selectedTile.x, selectedTile.y) === zoneId) inspect(selectedTile);
   computeStats();
   if (!options.silent) toast(`${zone.label}を開放しました`);
   return true;
+}
+
+function tileForObject(object) {
+  return object ? state.tiles.find(tile => tile.object === object) || null : null;
+}
+
+function landThemeIdForZone(zoneId) {
+  const themeId = state.expansion.zoneThemes?.[zoneId];
+  return LAND_THEMES[themeId] ? themeId : null;
+}
+
+function landThemeForTile(tile) {
+  const themeId = tile ? landThemeIdForZone(landZoneIdAt(tile.x, tile.y)) : null;
+  return themeId ? { id: themeId, ...LAND_THEMES[themeId] } : null;
+}
+
+function landThemeForObject(object) {
+  return landThemeForTile(tileForObject(object));
+}
+
+function landThemeMatchesGuest(theme, guest) {
+  return !!theme && theme.target === guest?.archetype;
+}
+
+function landThemeRideBonus(guest, ride) {
+  const theme = landThemeForObject(ride);
+  if (!landThemeMatchesGuest(theme, guest)) return 0;
+  return 7 + Number(theme.rideBias?.[ride.type] || 0);
+}
+
+function landThemeShopBonus(guest, tile) {
+  const theme = landThemeForTile(tile);
+  if (!landThemeMatchesGuest(theme, guest)) return 0;
+  if (theme.id === "market") return 8;
+  if (theme.id === "family" && ["food", "souvenir"].includes(shopKind(tile.object))) return 4;
+  return 2;
+}
+
+function applyLandThemeExperience(guest, tile) {
+  const theme = landThemeForTile(tile);
+  if (!landThemeMatchesGuest(theme, guest)) return null;
+  guest.satisfaction = clamp(Number(guest.satisfaction || 0) + theme.satisfaction, 0, 100);
+  state.sentiment = clamp(state.sentiment + .35, -20, 20);
+  return theme;
+}
+
+function landThemeExperienceMessage(theme) {
+  const messages = {
+    family: ["家族向けの雰囲気で安心して楽しめた", "家族で満喫"],
+    adventure: ["冒険エリアの演出で気分が高まった", "冒険気分"],
+    garden: ["緑に包まれた区画で心地よかった", "緑が心地いい"],
+    market: ["にぎやかなマーケット巡りが楽しい", "市場めぐり"]
+  };
+  return messages[theme?.id] || ["区画の雰囲気が楽しい", "いい雰囲気"];
+}
+
+function landThemeMarketingBonus(type) {
+  return Object.values(state.expansion.zoneThemes || {}).filter(themeId => LAND_THEMES[themeId]?.target === type).length * 12;
+}
+
+function setLandZoneTheme(zoneId, themeId, options = {}) {
+  const zone = LAND_ZONES[zoneId];
+  const theme = LAND_THEMES[themeId];
+  if (!zone || !theme || !isLandZoneUnlocked(zoneId)) return false;
+  if (landThemeIdForZone(zoneId) === themeId) return false;
+  if (state.money < theme.cost) {
+    if (!options.silent) toast(`${theme.label}テーマの設定資金が足りません`);
+    return false;
+  }
+  const historyBefore = options.recordHistory === false ? null : captureHistoryState();
+  state.money -= theme.cost;
+  state.expansion.zoneThemes ||= {};
+  state.expansion.zoneThemes[zoneId] = themeId;
+  selectedLandZoneId = zoneId;
+  landRenderSignature = "";
+  pushUndo(historyBefore);
+  computeStats();
+  if (!options.silent) toast(`${zone.label}を${theme.label}テーマに設定しました`);
+  return true;
+}
+
+function themedLandZoneCount() {
+  return state.expansion.unlockedZoneIds.filter(zoneId => landThemeIdForZone(zoneId)).length;
 }
 
 for (let y = 0; y < H; y++) {
@@ -862,25 +983,38 @@ function drawLockedLand(tile, point) {
   diamond(point.x, point.y, "rgba(54,75,78,.42)", edge);
 }
 
+function drawThemedLand(tile, point) {
+  if (!isTileUnlocked(tile)) return;
+  const theme = landThemeForTile(tile);
+  if (!theme) return;
+  ctx.save();
+  ctx.globalAlpha = .075;
+  diamond(point.x, point.y, theme.color, theme.color);
+  ctx.restore();
+}
+
 function drawLandZoneLabels() {
   ctx.save();
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  for (const zoneId of LAND_ZONE_ORDER.slice(1)) {
-    if (isLandZoneUnlocked(zoneId)) continue;
+  for (const zoneId of LAND_ZONE_ORDER) {
     const zone = LAND_ZONES[zoneId];
-    const point = iso(zone.center[0], zone.center[1], 3);
+    const unlocked = isLandZoneUnlocked(zoneId);
+    const themeId = landThemeIdForZone(zoneId);
+    if (unlocked && !themeId) continue;
+    const labelCenter = zone.labelCenter || zone.center;
+    const point = iso(labelCenter[0], labelCenter[1], 3);
     const width = 132 * clamp(camera.zoom, .72, 1.08);
     const height = 39 * clamp(camera.zoom, .72, 1.08);
-    ctx.fillStyle = "rgba(38,49,61,.86)";
+    ctx.fillStyle = unlocked ? LAND_THEMES[themeId].color : "rgba(38,49,61,.86)";
     roundRect(point.x - width / 2, point.y - height / 2, width, height, 6);
     ctx.fill();
     ctx.fillStyle = "#ffffff";
     ctx.font = `800 ${Math.max(9, 11 * camera.zoom)}px system-ui`;
     ctx.fillText(zone.label, point.x, point.y - 6 * camera.zoom);
-    ctx.fillStyle = "#f1d083";
+    ctx.fillStyle = unlocked ? "rgba(255,255,255,.86)" : "#f1d083";
     ctx.font = `700 ${Math.max(8, 9 * camera.zoom)}px system-ui`;
-    ctx.fillText(`評価${zone.stars} ・ $${zone.cost.toLocaleString()}`, point.x, point.y + 8 * camera.zoom);
+    ctx.fillText(unlocked ? `${LAND_THEMES[themeId].label}テーマ` : `評価${zone.stars} ・ $${zone.cost.toLocaleString()}`, point.x, point.y + 8 * camera.zoom);
   }
   ctx.restore();
 }
@@ -902,6 +1036,7 @@ function drawWorld() {
     if (tile.path) drawPathTrim(p.x, p.y);
     if (tile.terrain === "water") drawWater(p.x, p.y);
     drawLockedLand(tile, p);
+    drawThemedLand(tile, p);
     if (isTileUnlocked(tile)) drawAnalysisOverlay(tile, p, analysisScale);
     if (tile.litter > 0.5) drawLitter(p.x, p.y, tile.litter);
     if (tile.transitTrack === "monorail") drawMonorailTrack(tile);
@@ -2310,18 +2445,18 @@ function marketingFit(type) {
     const gentleRides = rides.filter(ride => ["carousel", "teacups", "wheel"].includes(ride.type)).length;
     const toilets = amenities.filter(object => object.type === "toilet").length;
     const benches = amenities.filter(object => object.type === "bench").length;
-    return clamp(gentleRides * 23 + toilets * 14 + benches * 5 + state.clean * .24, 0, 100);
+    return clamp(gentleRides * 23 + toilets * 14 + benches * 5 + state.clean * .24 + landThemeMarketingBonus(type), 0, 100);
   }
   if (type === "thrill") {
     const thrillRides = rides.filter(ride => ride.type === "coaster").length;
     const wheels = rides.filter(ride => ride.type === "wheel").length;
     const popularity = rides.length ? rides.reduce((sum, ride) => sum + Number(ride.popularity ?? 55), 0) / rides.length : 0;
-    return clamp(thrillRides * 48 + wheels * 14 + popularity * .38, 0, 100);
+    return clamp(thrillRides * 48 + wheels * 14 + popularity * .38 + landThemeMarketingBonus(type), 0, 100);
   }
   if (type === "scenic") {
     const scenicRides = rides.filter(ride => ["wheel", "carousel"].includes(ride.type)).length;
     const plantTypes = new Set(state.tiles.map(tile => tile.object?.type).filter(typeName => ["tree", "shrub", "flower", "palm"].includes(typeName))).size;
-    return clamp(sceneryScore() * .48 + scenicRides * 9 + plantTypes * 7, 0, 100);
+    return clamp(sceneryScore() * .48 + scenicRides * 9 + plantTypes * 7 + landThemeMarketingBonus(type), 0, 100);
   }
   if (type === "foodie") {
     const shopKinds = new Set(shops.map(shop => shopKind(shop))).size;
@@ -2331,7 +2466,7 @@ function marketingFit(type) {
     const reputation = shops.length
       ? shops.reduce((sum, shop) => sum + Number(shop.reputation ?? SHOP_MANAGEMENT_CONFIG.startingReputation), 0) / shops.length
       : 0;
-    return clamp(shopKinds * 23 + stockRatio * 18 + reputation * .2, 0, 100);
+    return clamp(shopKinds * 23 + stockRatio * 18 + reputation * .2 + landThemeMarketingBonus(type), 0, 100);
   }
   return 0;
 }
@@ -2816,6 +2951,7 @@ function chooseRide(guest = null) {
     const score = ride => rideEffectiveAppeal(ride)
       + Number(profile.rideBias?.[ride.type] || 0)
       + dayConditionRideBias(ride.type)
+      + landThemeRideBonus(guest, ride)
       + (guest?.archetype === "scenic" ? localSceneryScore(ride) * 1.2 : 0)
       - ride.queue.length * (guest?.archetype === "family" ? 5.5 : 4)
       - Number(ride.price ?? tools[ride.type].defaultPrice) * sensitivity
@@ -2979,7 +3115,8 @@ function chooseShop(guest, preferredKind = null) {
     }))
     .filter(choice => choice.pathTile && (choice.pathTile === guest.tile || findPath(guest.tile, choice.pathTile).length));
   const score = choice => Math.abs(choice.tile.x - guest.tile.x) + Math.abs(choice.tile.y - guest.tile.y)
-    + choice.demand * 3 / choice.staff - choice.stockRatio * 4 + choice.pricePressure * 3 - choice.reputation * .025;
+    + choice.demand * 3 / choice.staff - choice.stockRatio * 4 + choice.pricePressure * 3 - choice.reputation * .025
+    - landThemeShopBonus(guest, choice.tile);
   choices.sort((a, b) => score(a) - score(b));
   return choices[0] || null;
 }
@@ -2999,7 +3136,9 @@ function shopPriceTolerance(guest, shop = { type: "kiosk" }) {
   const servicePremium = (Number(shop.level || 1) - 1) * 1.25
     + (Number(shop.staff || 1) - 1) * .5
     + (Number(shop.reputation ?? SHOP_MANAGEMENT_CONFIG.startingReputation) - SHOP_MANAGEMENT_CONFIG.startingReputation) * .025;
-  return clamp(Math.round(tools[shop.type]?.defaultPrice + needPremium + archetypePremium + servicePremium - sensitivityPenalty), 3, 22);
+  const theme = landThemeForObject(shop);
+  const themePremium = theme?.id === "market" && landThemeMatchesGuest(theme, guest) ? 2 : 0;
+  return clamp(Math.round(tools[shop.type]?.defaultPrice + needPremium + archetypePremium + servicePremium + themePremium - sensitivityPenalty), 3, 22);
 }
 
 function shopRecommendedPrice(shop) {
@@ -3332,9 +3471,17 @@ function buyFromShop(guest, shop) {
   shop.reputation = clamp(Number(shop.reputation ?? SHOP_MANAGEMENT_CONFIG.startingReputation) + (value >= 0 ? .6 + qualityBonus : -.35), 0, 100);
   state.sentiment = clamp(state.sentiment + value, -20, 20);
   guest.satisfaction += value >= 0 ? 5 : -3;
+  const themeExperience = value >= 0 ? applyLandThemeExperience(guest, tileForObject(shop)) : null;
   const positiveMessage = kind === "drink" ? "冷たいドリンクで元気が出た" : kind === "souvenir" ? "すてきな思い出を持ち帰れそう" : "おいしくて値段もちょうどいい";
   const positiveShort = kind === "drink" ? "すっきり" : kind === "souvenir" ? "いい思い出" : "おいしい";
-  guestThought(guest, value >= 0 ? positiveMessage : `${shopKindLabel(kind)}は良いけれど少し高い`, value >= 0 ? positiveShort : "少し高い", value >= 0 ? "positive" : "negative", true);
+  const [themeMessage, themeShort] = landThemeExperienceMessage(themeExperience);
+  guestThought(
+    guest,
+    value >= 0 ? (themeExperience ? themeMessage : positiveMessage) : `${shopKindLabel(kind)}は良いけれど少し高い`,
+    value >= 0 ? (themeExperience ? themeShort : positiveShort) : "少し高い",
+    value >= 0 ? "positive" : "negative",
+    true
+  );
   if (shop.autoRestock && Number(shop.stock || 0) <= shopReorderPoint(shop)) placeShopOrder(shop, { silent: true });
   return true;
 }
@@ -3383,6 +3530,7 @@ function updateRide(ride, dt) {
   }
   ride.timer -= dt;
   if (ride.timer <= 0 && ride.riders.length) {
+    const rideTile = tileForObject(ride);
     for (const guest of ride.riders) {
       guest.state = "walking";
       guest.path = [];
@@ -3400,9 +3548,14 @@ function updateRide(ride, dt) {
       );
       const preference = Number(guest.profile?.rideBias?.[ride.type] || 0);
       guest.satisfaction = clamp(guest.satisfaction + value * 4 + preference * .25, 0, 100);
+      const themeExperience = value >= 0 ? applyLandThemeExperience(guest, rideTile) : null;
       ride.popularity = clamp(Number(ride.popularity ?? RIDE_MANAGEMENT_CONFIG.startingPopularity) + (value >= 0 ? .35 : -.55), 0, 100);
       guest.souvenirDesire = clamp(Number(guest.souvenirDesire || 0) + 18 * Number(guest.profile?.souvenirBias || 1), 0, 100);
       if (value < 0) guestThought(guest, "楽しかったけれど乗車料金が高い", "料金が高い", "negative", true);
+      else if (themeExperience) {
+        const [message, short] = landThemeExperienceMessage(themeExperience);
+        guestThought(guest, message, short, "positive", true);
+      }
       else if (guest.archetype === "thrill" && ride.type === "coaster") guestThought(guest, "このコースターは最高にスリル満点", "最高の絶叫", "positive", true);
       else if (guest.archetype === "scenic" && localSceneryScore(ride) >= 12) guestThought(guest, "ライドから見る景色がきれい", "景色がきれい", "positive", true);
       else guestThought(guest, `${tools[ride.type].label}が楽しかった`, "楽しかった", "positive", true);
@@ -3721,6 +3874,7 @@ function getManagementMetrics() {
       + monorailNetwork.fleet * TRANSIT_MODE_CONFIGS.monorail.capacity
       + parkTrainNetwork.fleet * TRANSIT_MODE_CONFIGS.park_train.capacity,
     landZones: state.expansion.unlockedZoneIds.length,
+    themedLandZones: themedLandZoneCount(),
     roundGuests: Math.max(0, state.guestsServed - Number(state.progression.roundStartServed || 0))
   };
 }
@@ -3729,7 +3883,7 @@ function calculateParkRating(metrics = getManagementMetrics()) {
   const experience = clamp(metrics.happy * .22 + metrics.clean * .13, 0, 35);
   const finance = clamp(metrics.net >= 0 ? 6 + metrics.net / 100 : 6 + metrics.net / 250, 0, 20);
   const facilities = clamp(metrics.rideTypes * 3 + metrics.rides * .8 + Math.min(3, metrics.amenities * .5)
-    + Math.min(4, metrics.roundGuests * .25) + Math.max(0, metrics.landZones - 1) * 1.2, 0, 15);
+    + Math.min(4, metrics.roundGuests * .25) + Math.max(0, metrics.landZones - 1) * 1.2 + metrics.themedLandZones * .8, 0, 15);
   const scenery = clamp(metrics.scenery * .14, 0, 15);
   const healthyTransit = metrics.transitWaiting <= metrics.transitCapacity ? 2 : 0;
   const transit = clamp(metrics.connectedStops * 2 + metrics.busFleet + Math.min(7, metrics.transitRiders * .05) + healthyTransit, 0, 15);
@@ -3871,12 +4025,43 @@ function renderLandExpansionPanel() {
         ? `${next.zone.label}まであと$${(next.zone.cost - state.money).toLocaleString()}です。`
         : `${next.zone.label}を購入して建設範囲を広げられます。`;
   }
-  const signature = `${owned}:${rows}:${hint}`;
+  if (!isLandZoneUnlocked(selectedLandZoneId)) selectedLandZoneId = "core";
+  const selectedZone = LAND_ZONES[selectedLandZoneId];
+  const currentThemeId = landThemeIdForZone(selectedLandZoneId);
+  const currentTheme = currentThemeId ? LAND_THEMES[currentThemeId] : null;
+  const zoneTabs = state.expansion.unlockedZoneIds.map(zoneId => {
+    const zone = LAND_ZONES[zoneId];
+    const theme = landThemeIdForZone(zoneId);
+    return `<button class="${zoneId === selectedLandZoneId ? "active" : ""}" data-land-theme-zone="${zoneId}">${zone.label.replace("区画", "")}<small>${theme ? LAND_THEMES[theme].label : "未設定"}</small></button>`;
+  }).join("");
+  const themeOptions = Object.entries(LAND_THEMES).map(([themeId, theme]) => {
+    const active = currentThemeId === themeId;
+    const disabled = active || state.money < theme.cost;
+    return `<button class="${active ? "active" : ""}" data-land-theme="${themeId}" ${disabled ? "disabled" : ""}><i class="theme-${themeId}" aria-hidden="true"></i><span>${theme.label}</span><b>${active ? "設定中" : `$${theme.cost.toLocaleString()}`}</b></button>`;
+  }).join("");
+  const themeHint = currentTheme
+    ? currentTheme.hint
+    : "区画の狙う客層を決めると、施設選びと満足度にボーナスが入ります。";
+  const signature = `${owned}:${rows}:${hint}:${selectedLandZoneId}:${zoneTabs}:${themeOptions}:${themeHint}`;
   if (signature === landRenderSignature) return;
   ui.landOwned.textContent = `${owned} / ${LAND_ZONE_ORDER.length}区画`;
   ui.landZoneList.innerHTML = rows;
   ui.landHint.textContent = hint;
+  ui.landThemeZoneName.textContent = selectedZone.label;
+  ui.landThemeCurrent.textContent = currentTheme ? `${currentTheme.label}テーマ` : "未設定";
+  ui.landThemeCurrent.style.color = currentTheme?.color || "var(--muted)";
+  ui.landThemeZoneTabs.innerHTML = zoneTabs;
+  ui.landThemeOptions.innerHTML = themeOptions;
+  ui.landThemeHint.textContent = themeHint;
   landRenderSignature = signature;
+}
+
+function selectLandThemeZone(zoneId) {
+  if (!LAND_ZONES[zoneId] || !isLandZoneUnlocked(zoneId)) return false;
+  selectedLandZoneId = zoneId;
+  landRenderSignature = "";
+  renderLandExpansionPanel();
+  return true;
 }
 
 function saveGame() {
@@ -3911,7 +4096,10 @@ function saveGame() {
     })),
     transit: cloneTransitState(),
     progression: JSON.parse(JSON.stringify(state.progression)),
-    expansion: { unlockedZoneIds: [...state.expansion.unlockedZoneIds] },
+    expansion: {
+      unlockedZoneIds: [...state.expansion.unlockedZoneIds],
+      zoneThemes: { ...(state.expansion.zoneThemes || {}) }
+    },
     tiles: state.tiles.map(tile => ({
       terrain: tile.terrain,
       path: tile.path,
@@ -4480,7 +4668,10 @@ function captureHistoryState() {
   return {
     money: state.money,
     finance: { ...state.finance },
-    expansion: { unlockedZoneIds: [...state.expansion.unlockedZoneIds] },
+    expansion: {
+      unlockedZoneIds: [...state.expansion.unlockedZoneIds],
+      zoneThemes: { ...(state.expansion.zoneThemes || {}) }
+    },
     transit: cloneTransitState(),
     stopSequence,
     selectedTileIndex: selectedTile ? state.tiles.indexOf(selectedTile) : -1,
@@ -4535,7 +4726,10 @@ function undoLastBuild() {
   }
   state.money = snapshot.money;
   state.finance = { ...snapshot.finance };
-  state.expansion = { unlockedZoneIds: [...(snapshot.expansion?.unlockedZoneIds || ["core"])] };
+  state.expansion = {
+    unlockedZoneIds: [...(snapshot.expansion?.unlockedZoneIds || ["core"])],
+    zoneThemes: { ...(snapshot.expansion?.zoneThemes || {}) }
+  };
   landRenderSignature = "";
   state.transit = JSON.parse(JSON.stringify(snapshot.transit));
   stopSequence = snapshot.stopSequence;
@@ -5593,6 +5787,14 @@ ui.landZoneList.addEventListener("click", event => {
   const zoneId = event.target.closest("[data-land-zone]")?.dataset.landZone;
   if (zoneId) purchaseLandZone(zoneId);
 });
+ui.landThemeZoneTabs.addEventListener("click", event => {
+  const zoneId = event.target.closest("[data-land-theme-zone]")?.dataset.landThemeZone;
+  if (zoneId) selectLandThemeZone(zoneId);
+});
+ui.landThemeOptions.addEventListener("click", event => {
+  const themeId = event.target.closest("[data-land-theme]")?.dataset.landTheme;
+  if (themeId) setLandZoneTheme(selectedLandZoneId, themeId);
+});
 ui.analysisNormal.addEventListener("click", () => setAnalysisMode("normal"));
 ui.analysisCrowding.addEventListener("click", () => setAnalysisMode("crowding"));
 ui.analysisHygiene.addEventListener("click", () => setAnalysisMode("hygiene"));
@@ -5750,6 +5952,8 @@ window.parkDebug = {
       activeGoals: [...state.progression.activeGoalIds],
       completedGoals: [...state.progression.completedGoalIds],
       landZones: [...state.expansion.unlockedZoneIds],
+      landThemes: { ...(state.expansion.zoneThemes || {}) },
+      themedLandZones: themedLandZoneCount(),
       ownedLandTiles: state.tiles.filter(isTileUnlocked).length,
       paths: state.tiles.filter(t => t.path).length,
       scenery: sceneryScore(),
@@ -5785,6 +5989,16 @@ window.parkDebug = {
   renderAnalysisPanel,
   renderLandExpansionPanel,
   purchaseLandZone,
+  setLandZoneTheme,
+  selectLandThemeZone,
+  landThemeIdForZone,
+  landThemeForTile,
+  landThemeForObject,
+  landThemeRideBonus,
+  landThemeShopBonus,
+  applyLandThemeExperience,
+  landThemeMarketingBonus,
+  themedLandZoneCount,
   isLandZoneUnlocked,
   isTileUnlocked,
   landZoneIdAt,

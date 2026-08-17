@@ -187,6 +187,20 @@
         </div>
         <div id="landZoneList" class="land-zone-list"></div>
         <p id="landHint">未購入区画はマップ上に暗く表示されます。</p>
+        <div class="land-theme-editor" aria-label="区画テーマ設定">
+          <div class="land-theme-heading">
+            <span><small>区画テーマ</small><strong id="landThemeZoneName">ウェルカム区画</strong></span>
+            <b id="landThemeCurrent">未設定</b>
+          </div>
+          <div id="landThemeZoneTabs" class="land-theme-zone-tabs" aria-label="所有区画"></div>
+          <div id="landThemeOptions" class="land-theme-options">
+            <button data-land-theme="family"><i class="theme-family" aria-hidden="true"></i><span>ファミリー</span><b>$900</b></button>
+            <button data-land-theme="adventure"><i class="theme-adventure" aria-hidden="true"></i><span>アドベンチャー</span><b>$1,200</b></button>
+            <button data-land-theme="garden"><i class="theme-garden" aria-hidden="true"></i><span>ガーデン</span><b>$1,000</b></button>
+            <button data-land-theme="market"><i class="theme-market" aria-hidden="true"></i><span>マーケット</span><b>$1,100</b></button>
+          </div>
+          <p id="landThemeHint">区画の狙う客層を決めると、施設選びと満足度にボーナスが入ります。</p>
+        </div>
       </section>
       <section class="guest-feedback" aria-label="ゲストの感想">
         <div class="feedback-heading">
