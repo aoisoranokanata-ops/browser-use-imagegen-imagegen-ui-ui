@@ -20,6 +20,20 @@ const ui = {
   conditionRide: document.getElementById("conditionRide"),
   conditionNext: document.getElementById("conditionNext"),
   conditionHint: document.getElementById("conditionHint"),
+  seasonPanel: document.getElementById("seasonPanel"),
+  seasonName: document.getElementById("seasonName"),
+  seasonRemaining: document.getElementById("seasonRemaining"),
+  seasonSwatch: document.getElementById("seasonSwatch"),
+  seasonEventName: document.getElementById("seasonEventName"),
+  seasonEventStatus: document.getElementById("seasonEventStatus"),
+  seasonArrival: document.getElementById("seasonArrival"),
+  seasonDemand: document.getElementById("seasonDemand"),
+  seasonRide: document.getElementById("seasonRide"),
+  seasonEventBtn: document.getElementById("seasonEventBtn"),
+  paradeEventBtn: document.getElementById("paradeEventBtn"),
+  fireworksEventBtn: document.getElementById("fireworksEventBtn"),
+  crowdEventStatus: document.getElementById("crowdEventStatus"),
+  seasonHint: document.getElementById("seasonHint"),
   selected: document.getElementById("selected"),
   analysisStatus: document.getElementById("analysisStatus"),
   analysisNormal: document.getElementById("analysisNormal"),
@@ -254,6 +268,37 @@ const MARKETING_CAMPAIGNS = {
   scenic: { label: "景観好き", cost: 500, leads: 16, interval: .8, targetShare: .64 },
   foodie: { label: "グルメ層", cost: 550, leads: 18, interval: .78, targetShare: .66 }
 };
+const SEASON_ORDER = ["spring", "summer", "autumn", "winter"];
+const SEASONAL_EVENTS = {
+  spring: {
+    seasonLabel: "春", label: "桜フェス", cost: 700, duration: 2, arrivalRate: 1.18,
+    hungerRate: 1, thirstRate: 1, souvenirRate: 1.22, satisfaction: 2,
+    ride: "flower_swing", targets: ["family", "scenic"], demandLabel: "土産 +", color: "#e98fa8",
+    hint: "桜フェスは景観好きと家族連れに好評です。おみやげ在庫を少し厚めにしましょう。"
+  },
+  summer: {
+    seasonLabel: "夏", label: "サマースプラッシュ", cost: 850, duration: 2, arrivalRate: 1.24,
+    hungerRate: .95, thirstRate: 1.38, souvenirRate: 1, satisfaction: 2,
+    ride: "splash_boats", targets: ["thrill", "family"], demandLabel: "飲料 ↑↑", color: "#36a8c8",
+    hint: "夏イベントは来園効果が最大です。ドリンクの在庫切れと水上ボートの行列に注意しましょう。"
+  },
+  autumn: {
+    seasonLabel: "秋", label: "ハーベストカーニバル", cost: 750, duration: 2, arrivalRate: 1.2,
+    hungerRate: 1.34, thirstRate: 1, souvenirRate: 1.16, satisfaction: 2,
+    ride: "harvest_spin", targets: ["foodie", "family"], demandLabel: "フード ↑", color: "#d88a32",
+    hint: "秋イベントではフード需要が伸びます。売店の店員と自動発注を確認してから開催しましょう。"
+  },
+  winter: {
+    seasonLabel: "冬", label: "スノーライトフェス", cost: 900, duration: 2, arrivalRate: 1.22,
+    hungerRate: 1.18, thirstRate: .82, souvenirRate: 1.42, satisfaction: 3,
+    ride: "aurora_tower", targets: ["scenic", "relaxed"], demandLabel: "土産 ↑↑", color: "#796dc0",
+    hint: "冬のライトアップは満足度とおみやげ需要を大きく伸ばします。光のタワーが目玉です。"
+  }
+};
+const CROWD_EVENTS = {
+  parade: { label: "ミニパレード", cost: 500, duration: 1, arrivalRate: 1.14, satisfaction: 1 },
+  fireworks: { label: "花火ナイト", cost: 850, duration: 1, arrivalRate: 1.28, satisfaction: 2 }
+};
 const DAY_CONDITIONS = {
   sunny: {
     label: "晴れ",
@@ -373,6 +418,10 @@ const tools = {
   wheel: { cost: 3200, label: "観覧車", ride: true, cap: 10, duration: 13, appeal: 27, upkeep: 28, defaultPrice: 10, color: "#49abc2" },
   coaster: { cost: 4800, label: "コースター", ride: true, cap: 12, duration: 10, appeal: 36, upkeep: 45, defaultPrice: 14, color: "#f1b84f" },
   teacups: { cost: 1400, label: "ティーカップ", ride: true, cap: 6, duration: 7, appeal: 15, upkeep: 14, defaultPrice: 6, color: "#9bcf67" },
+  flower_swing: { cost: 2600, label: "桜スイング", ride: true, cap: 8, duration: 8, appeal: 25, upkeep: 24, defaultPrice: 9, color: "#e98fa8", limitedSeason: "spring" },
+  splash_boats: { cost: 3100, label: "スプラッシュボート", ride: true, cap: 10, duration: 9, appeal: 29, upkeep: 31, defaultPrice: 11, color: "#36a8c8", limitedSeason: "summer" },
+  harvest_spin: { cost: 2800, label: "ハーベストスピン", ride: true, cap: 8, duration: 8, appeal: 27, upkeep: 25, defaultPrice: 10, color: "#d88a32", limitedSeason: "autumn" },
+  aurora_tower: { cost: 3600, label: "オーロラタワー", ride: true, cap: 12, duration: 11, appeal: 33, upkeep: 36, defaultPrice: 12, color: "#796dc0", limitedSeason: "winter" },
   kiosk: { cost: 900, label: "スナック売店", shop: true, shopKind: "food", defaultPrice: 8, unitCost: 3, instantUnitCost: 4, deliverySize: 30, capacityScale: 1, staffWage: 18 },
   drink_stand: { cost: 750, label: "ドリンクスタンド", shop: true, shopKind: "drink", defaultPrice: 6, unitCost: 2, instantUnitCost: 3, deliverySize: 36, capacityScale: 1.2, staffWage: 15 },
   souvenir_shop: { cost: 1600, label: "おみやげショップ", shop: true, shopKind: "souvenir", defaultPrice: 14, unitCost: 6, instantUnitCost: 8, deliverySize: 20, capacityScale: .75, staffWage: 22 },
@@ -444,7 +493,8 @@ const state = {
     maintenanceExpenses: 0,
     staffExpenses: 0,
     restockExpenses: 0,
-    marketingExpenses: 0
+    marketingExpenses: 0,
+    eventExpenses: 0
   },
   marketing: {
     activeCampaign: null,
@@ -452,6 +502,14 @@ const state = {
     attractedGuests: 0,
     refusals: 0,
     campaignsStarted: 0
+  },
+  seasonalEvent: {
+    activeSeason: null,
+    roundsRemaining: 0,
+    boostType: null,
+    boostRoundsRemaining: 0,
+    eventsHosted: 0,
+    boostedGuests: 0
   },
   staff: { cleaners: 1, mechanics: 1 },
   staffStats: { cleaningJobs: 0, repairJobs: 0 },
@@ -730,7 +788,7 @@ function rideRepairTarget(ride) {
 }
 
 function rideMaintenanceCost(ride) {
-  const openFactor = ride.open === false ? .25 : 1;
+  const openFactor = ride.open === false ? .25 : seasonalRideAvailable(ride.type) ? 1 : .18;
   const levelFactor = 1 + (Number(ride.level || 1) - 1) * .16;
   return Number(tools[ride.type]?.upkeep || 0) * ridePolicy(ride).upkeep * levelFactor * openFactor;
 }
@@ -1439,9 +1497,73 @@ function drawRide(type, p, ride) {
       drawCup(Math.cos(a) * 19 * z, 6 * z + Math.sin(a) * 8 * z, i % 2 ? "#ef6f61" : "#49abc2");
     }
     drawFlag(0, -4 * z, "#f1b84f", 1);
+  } else if (type === "flower_swing") {
+    drawCylinder(0, 13 * z, 31 * z, 11 * z, "#fff7df", "#77b86b");
+    ctx.strokeStyle = "#74544c";
+    ctx.lineWidth = 4 * z;
+    ctx.beginPath(); ctx.moveTo(0, 8 * z); ctx.lineTo(0, -34 * z); ctx.stroke();
+    for (let i = 0; i < 7; i++) {
+      const a = i * Math.PI * 2 / 7;
+      const bx = Math.cos(a) * 18 * z;
+      const by = -32 * z + Math.sin(a) * 7 * z;
+      ctx.fillStyle = i % 2 ? "#f4aac0" : "#fff1f2";
+      ctx.beginPath(); ctx.arc(bx, by, 9 * z, 0, Math.PI * 2); ctx.fill();
+    }
+    for (let i = 0; i < 5; i++) {
+      const a = t * 1.5 + i * Math.PI * 2 / 5;
+      const sx = Math.cos(a) * 24 * z;
+      const sy = -3 * z + Math.sin(a) * 7 * z;
+      ctx.strokeStyle = "#fff7df"; ctx.lineWidth = 1.5 * z;
+      ctx.beginPath(); ctx.moveTo(0, -29 * z); ctx.lineTo(sx, sy); ctx.stroke();
+      ctx.fillStyle = i % 2 ? "#49abc2" : "#ef6f61";
+      roundRect(sx - 6 * z, sy - 2 * z, 12 * z, 7 * z, 2 * z); ctx.fill();
+    }
+  } else if (type === "splash_boats") {
+    drawCylinder(0, 12 * z, 34 * z, 12 * z, "#65cbe0", "#318ba8");
+    ctx.strokeStyle = "rgba(255,255,255,.78)"; ctx.lineWidth = 2 * z;
+    ctx.beginPath(); ctx.ellipse(0, 4 * z, 24 * z, 9 * z, 0, 0, Math.PI * 2); ctx.stroke();
+    for (let i = 0; i < 3; i++) {
+      const a = t * 1.25 + i * Math.PI * 2 / 3;
+      const bx = Math.cos(a) * 21 * z;
+      const by = 4 * z + Math.sin(a) * 7 * z;
+      ctx.fillStyle = i % 2 ? "#f1b84f" : "#ef6f61";
+      ctx.beginPath(); ctx.moveTo(bx - 9 * z, by); ctx.lineTo(bx + 7 * z, by); ctx.lineTo(bx + 3 * z, by + 7 * z); ctx.lineTo(bx - 6 * z, by + 7 * z); ctx.closePath(); ctx.fill();
+    }
+    ctx.strokeStyle = "#dffaff"; ctx.lineWidth = 2 * z;
+    for (let i = 0; i < 3; i++) {
+      const x = (-12 + i * 12) * z;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.quadraticCurveTo(x + 5 * z, -22 * z, x + 10 * z, 0); ctx.stroke();
+    }
+  } else if (type === "harvest_spin") {
+    drawCylinder(0, 13 * z, 32 * z, 11 * z, "#fff2cf", "#8eb15c");
+    for (let i = 0; i < 5; i++) {
+      const a = t * 1.55 + i * Math.PI * 2 / 5;
+      const px = Math.cos(a) * 21 * z;
+      const py = 4 * z + Math.sin(a) * 8 * z;
+      ctx.fillStyle = i % 2 ? "#e88b2c" : "#f2aa36";
+      ctx.beginPath(); ctx.arc(px, py, 9 * z, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#57924d"; ctx.fillRect(px - 2 * z, py - 11 * z, 4 * z, 5 * z);
+    }
+    ctx.fillStyle = "#f7ca55";
+    ctx.beginPath(); ctx.arc(0, -16 * z, 11 * z, 0, Math.PI * 2); ctx.fill();
+    drawFlag(0, -30 * z, "#8a5a2f", 1);
+  } else if (type === "aurora_tower") {
+    drawCylinder(0, 15 * z, 27 * z, 12 * z, "#e8fbff", "#796dc0");
+    ctx.fillStyle = "#e3f8ff";
+    ctx.beginPath(); ctx.moveTo(-11 * z, 8 * z); ctx.lineTo(-5 * z, -60 * z); ctx.lineTo(5 * z, -60 * z); ctx.lineTo(11 * z, 8 * z); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "#796dc0"; ctx.lineWidth = 3 * z; ctx.stroke();
+    const liftY = (-48 + (Math.sin(t * 1.2) + 1) * 22) * z;
+    ctx.fillStyle = "#49abc2"; roundRect(-12 * z, liftY, 24 * z, 10 * z, 4 * z); ctx.fill();
+    ctx.fillStyle = "#fff7df"; ctx.fillRect(-7 * z, liftY + 2 * z, 14 * z, 4 * z);
+    for (let i = 0; i < 6; i++) {
+      const a = t * .7 + i * 1.7;
+      ctx.fillStyle = i % 2 ? "#b8f1dc" : "#f1e7ff";
+      ctx.beginPath(); ctx.arc(Math.cos(a) * 27 * z, (-35 + Math.sin(a * 1.3) * 24) * z, 2.3 * z, 0, Math.PI * 2); ctx.fill();
+    }
   }
-  if (ride.open === false) drawRideStatusBadge("休止", -31 * z, -64 * z, "#596574");
-  else if (ride.broken) drawRideStatusBadge("故障", -31 * z, -64 * z, "#d84f4f");
+  if (ride.broken) drawRideStatusBadge("故障", -31 * z, -64 * z, "#d84f4f");
+  else if (!seasonalRideAvailable(type)) drawRideStatusBadge("季節休止", -37 * z, -64 * z, "#796dc0");
+  else if (ride.open === false) drawRideStatusBadge("休止", -31 * z, -64 * z, "#596574");
   if (ride.queue.length) drawQueueBadge(ride.queue.length, -30 * z, -42 * z);
   ctx.restore();
 }
@@ -2518,13 +2640,141 @@ function dayConditionArrivalInterval(baseInterval) {
   return Number(baseInterval) / currentDayCondition().arrivalRate;
 }
 
+function seasonForRound(round = state.round) {
+  return SEASON_ORDER[Math.floor((Math.max(1, Number(round)) - 1) / 3) % SEASON_ORDER.length];
+}
+
+function currentSeasonEvent() {
+  return SEASONAL_EVENTS[seasonForRound()];
+}
+
+function activeSeasonalEvent() {
+  const season = seasonForRound();
+  return state.seasonalEvent.activeSeason === season && state.seasonalEvent.roundsRemaining > 0
+    ? SEASONAL_EVENTS[season]
+    : null;
+}
+
+function activeCrowdEvent() {
+  return state.seasonalEvent.boostRoundsRemaining > 0
+    ? CROWD_EVENTS[state.seasonalEvent.boostType] || null
+    : null;
+}
+
+function seasonalRideAvailable(type) {
+  const season = tools[type]?.limitedSeason;
+  return !season || !!activeSeasonalEvent() && season === seasonForRound();
+}
+
+function seasonalArrivalInterval(baseInterval) {
+  const seasonalRate = activeSeasonalEvent()?.arrivalRate || 1;
+  const crowdRate = activeCrowdEvent()?.arrivalRate || 1;
+  return Number(baseInterval) / seasonalRate / crowdRate;
+}
+
+function seasonalRideGuestBonus(guest, ride) {
+  const event = activeSeasonalEvent();
+  if (!event || ride?.type !== event.ride) return 0;
+  return 9 + (event.targets.includes(guest?.archetype) ? 9 : 0);
+}
+
+function startSeasonalEvent(options = {}) {
+  const season = seasonForRound();
+  const event = SEASONAL_EVENTS[season];
+  if (activeSeasonalEvent()) {
+    if (!options.silent) toast(`${event.label}は開催中です`);
+    return false;
+  }
+  if (state.money < event.cost) {
+    if (!options.silent) toast(`${event.label}の開催資金が足りません`);
+    return false;
+  }
+  state.money -= event.cost;
+  state.finance.eventExpenses += event.cost;
+  state.seasonalEvent.activeSeason = season;
+  state.seasonalEvent.roundsRemaining = Math.min(event.duration, 3 - ((state.round - 1) % 3));
+  state.seasonalEvent.eventsHosted++;
+  state.sentiment = clamp(state.sentiment + 1, -20, 20);
+  updateToolLocks();
+  computeStats();
+  if (!options.silent) toast(`${event.label}を開催しました。${tools[event.ride].label}が建設できます`);
+  return true;
+}
+
+function startCrowdEvent(type, options = {}) {
+  const event = CROWD_EVENTS[type];
+  if (!event) return false;
+  if (activeCrowdEvent()) {
+    if (!options.silent) toast(`${activeCrowdEvent().label}は実施中です`);
+    return false;
+  }
+  if (state.money < event.cost) {
+    if (!options.silent) toast(`${event.label}の実施資金が足りません`);
+    return false;
+  }
+  state.money -= event.cost;
+  state.finance.eventExpenses += event.cost;
+  state.seasonalEvent.boostType = type;
+  state.seasonalEvent.boostRoundsRemaining = event.duration;
+  state.seasonalEvent.eventsHosted++;
+  state.sentiment = clamp(state.sentiment + event.satisfaction, -20, 20);
+  computeStats();
+  if (!options.silent) toast(`${event.label}を開始しました。今ラウンドの集客が増えます`);
+  return true;
+}
+
+function advanceSeasonalEvents() {
+  state.seasonalEvent.roundsRemaining = Math.max(0, state.seasonalEvent.roundsRemaining - 1);
+  state.seasonalEvent.boostRoundsRemaining = Math.max(0, state.seasonalEvent.boostRoundsRemaining - 1);
+  if (!state.seasonalEvent.roundsRemaining) state.seasonalEvent.activeSeason = null;
+  if (!state.seasonalEvent.boostRoundsRemaining) state.seasonalEvent.boostType = null;
+  for (const ride of state.rides.filter(candidate => !seasonalRideAvailable(candidate.type))) {
+    const rideTile = tileForObject(ride);
+    for (const guest of ride.queue.splice(0)) {
+      guest.tile = nearestPathForTile(rideTile) || entrance;
+      guest.pos = { x: guest.tile.x, y: guest.tile.y };
+      guestThought(guest, "季節限定ライドがシーズン休止になった", "季節休止", "neutral", true);
+      routeGuestToRideOrExit(guest);
+    }
+  }
+  if (!seasonalRideAvailable(selectedTool)) selectTool("inspect", { silent: true, close: false });
+  if (tools[selectedTile?.object?.type]?.limitedSeason) inspect(selectedTile);
+  updateToolLocks();
+}
+
+function renderSeasonalEventPanel() {
+  const season = seasonForRound();
+  const event = SEASONAL_EVENTS[season];
+  const active = activeSeasonalEvent();
+  const crowd = activeCrowdEvent();
+  const roundsInSeason = 3 - ((state.round - 1) % 3);
+  ui.seasonPanel.dataset.season = season;
+  ui.seasonName.textContent = event.seasonLabel;
+  ui.seasonRemaining.textContent = `あと${roundsInSeason}ラウンド`;
+  ui.seasonSwatch.style.background = event.color;
+  ui.seasonEventName.textContent = event.label;
+  ui.seasonEventStatus.textContent = active ? `開催中・残り${state.seasonalEvent.roundsRemaining}` : "未開催";
+  ui.seasonArrival.textContent = `+${Math.round((event.arrivalRate - 1) * 100)}%`;
+  ui.seasonDemand.textContent = event.demandLabel;
+  ui.seasonRide.textContent = tools[event.ride].label;
+  ui.seasonEventBtn.textContent = active ? `${event.label} 開催中` : `${event.label}を開催 $${event.cost}`;
+  ui.seasonEventBtn.disabled = !!active || state.money < event.cost;
+  ui.crowdEventStatus.textContent = crowd ? `${crowd.label}・今ラウンド` : "未実施";
+  ui.paradeEventBtn.disabled = !!crowd || state.money < CROWD_EVENTS.parade.cost;
+  ui.fireworksEventBtn.disabled = !!crowd || state.money < CROWD_EVENTS.fireworks.cost;
+  ui.paradeEventBtn.classList.toggle("active", state.seasonalEvent.boostType === "parade" && !!crowd);
+  ui.fireworksEventBtn.classList.toggle("active", state.seasonalEvent.boostType === "fireworks" && !!crowd);
+  ui.seasonHint.textContent = active ? event.hint : `開催すると${event.duration}ラウンド有効になり、${tools[event.ride].label}を建設・稼働できます。`;
+}
+
 function guestNeedRates(guest) {
   const profile = guest?.profile || GUEST_ARCHETYPES[guest?.archetype] || GUEST_ARCHETYPES.relaxed;
   const condition = currentDayCondition();
+  const seasonal = activeSeasonalEvent() || { hungerRate: 1, thirstRate: 1, souvenirRate: 1 };
   return {
-    hunger: Number(profile.hungerRate || 1) * condition.hungerRate,
-    thirst: Number(profile.thirstRate || .9) * condition.thirstRate,
-    souvenir: .035 * Number(profile.souvenirBias || 1) * condition.souvenirRate
+    hunger: Number(profile.hungerRate || 1) * condition.hungerRate * seasonal.hungerRate,
+    thirst: Number(profile.thirstRate || .9) * condition.thirstRate * seasonal.thirstRate,
+    souvenir: .035 * Number(profile.souvenirBias || 1) * condition.souvenirRate * seasonal.souvenirRate
   };
 }
 
@@ -2610,11 +2860,11 @@ function update(dt) {
   spawnTimer += dt;
   incomeTimer += dt;
   expenseTimer += dt;
-  const attraction = state.rides.reduce((sum, r) => sum + tools[r.type].appeal, 0);
+  const attraction = state.rides.reduce((sum, r) => sum + (seasonalRideAvailable(r.type) ? tools[r.type].appeal : 0), 0);
   const transitStops = busStops().length;
   const admissionPressure = Math.max(0, state.admissionFee - 25) * .045;
   const campaignInterval = activeMarketingCampaign()?.interval || 1;
-  const interval = Math.max(.65, dayConditionArrivalInterval((3.6 - attraction / 42 - state.round * .08 - transitStops * .14 + admissionPressure) * campaignInterval));
+  const interval = Math.max(.65, seasonalArrivalInterval(dayConditionArrivalInterval((3.6 - attraction / 42 - state.round * .08 - transitStops * .14 + admissionPressure) * campaignInterval)));
   if (spawnTimer > interval && state.guests.length < 12 + state.round * 5) {
     spawnTimer = 0;
     spawnGuest();
@@ -2913,7 +3163,8 @@ function spawnGuestAt(startTile) {
     purchases: { food: false, drink: false, souvenir: false },
     fatigue: (archetype === "family" ? 24 : 12) + Math.random() * 36,
     restroomNeed: (archetype === "family" ? 32 : 20) + Math.random() * 40,
-    satisfaction: campaignFit === null ? 72 : clamp(66 + (campaignFit - 50) * .24, 54, 82),
+    satisfaction: clamp((campaignFit === null ? 72 : clamp(66 + (campaignFit - 50) * .24, 54, 82))
+      + Number(activeSeasonalEvent()?.satisfaction || 0) + Number(activeCrowdEvent()?.satisfaction || 0), 0, 100),
     campaignType,
     thought: null,
     thoughtTimer: 0,
@@ -2926,12 +3177,15 @@ function spawnGuestAt(startTile) {
   state.money += state.admissionFee;
   state.finance.admissionRevenue += state.admissionFee;
   state.guests.push(guest);
+  if (activeSeasonalEvent() || activeCrowdEvent()) state.seasonalEvent.boostedGuests++;
   startTile.traffic = Number(startTile.traffic || 0) + .5;
   if (campaign) state.marketing.attractedGuests = Math.max(0, Number(state.marketing.attractedGuests || 0)) + 1;
   if (campaignMatch && campaignFit < 50) {
     guestThought(guest, `${MARKETING_CAMPAIGNS[campaignType].label}向けと聞いたけれど設備が物足りない`, "期待と違う", "negative", true);
   } else if (campaignMatch && campaignFit >= 75) {
     guestThought(guest, `${MARKETING_CAMPAIGNS[campaignType].label}向けの充実したパークでうれしい`, "期待どおり", "positive", true);
+  } else if (activeSeasonalEvent()) {
+    guestThought(guest, `${activeSeasonalEvent().label}と${tools[activeSeasonalEvent().ride].label}が楽しみ`, "イベント楽しみ", "positive", true);
   }
   return true;
 }
@@ -2941,7 +3195,7 @@ function chooseRide(guest = null) {
   const reachable = state.rides.filter(ride => {
     const pathTile = nearestPath(ride);
     const price = Number(ride.price ?? tools[ride.type].defaultPrice);
-    return ride.open !== false && !ride.broken && price <= Number(guest?.budget ?? Infinity)
+    return ride.open !== false && !ride.broken && seasonalRideAvailable(ride.type) && price <= Number(guest?.budget ?? Infinity)
       && pathTile && (pathTile === origin || findPath(origin, pathTile).length);
   });
   if (!reachable.length) return null;
@@ -2951,6 +3205,7 @@ function chooseRide(guest = null) {
     const score = ride => rideEffectiveAppeal(ride)
       + Number(profile.rideBias?.[ride.type] || 0)
       + dayConditionRideBias(ride.type)
+      + seasonalRideGuestBonus(guest, ride)
       + landThemeRideBonus(guest, ride)
       + (guest?.archetype === "scenic" ? localSceneryScore(ride) * 1.2 : 0)
       - ride.queue.length * (guest?.archetype === "family" ? 5.5 : 4)
@@ -3502,6 +3757,7 @@ function updateRide(ride, dt) {
   ride.condition = clamp(Number(ride.condition ?? 100), 0, 100);
   ride.broken = !!ride.broken;
   if (ride.broken) return;
+  if (!seasonalRideAvailable(ride.type) && !ride.riders.length) return;
   if (ride.open === false && !ride.riders.length) return;
   const policy = ridePolicy(ride);
   const debtPenalty = state.money < 0 ? 1.8 : 1;
@@ -3577,7 +3833,7 @@ function updateRide(ride, dt) {
     ride.totalRides++;
     ride.condition = clamp(ride.condition - .7 - tools[ride.type].upkeep * .018, 0, 100);
   }
-  if (ride.open !== false && !ride.riders.length && ride.queue.length) {
+  if (ride.open !== false && seasonalRideAvailable(ride.type) && !ride.riders.length && ride.queue.length) {
     const cap = rideCapacity(ride);
     ride.riders = ride.queue.splice(0, cap);
     const rideTile = state.tiles.find(t => t.object === ride);
@@ -3846,7 +4102,8 @@ function rebuildRideList() {
 
 function getManagementMetrics() {
   const revenue = state.finance.admissionRevenue + state.finance.rideRevenue + state.finance.shopRevenue;
-  const expenses = state.finance.maintenanceExpenses + state.finance.staffExpenses + state.finance.restockExpenses + state.finance.marketingExpenses;
+  const expenses = state.finance.maintenanceExpenses + state.finance.staffExpenses + state.finance.restockExpenses
+    + state.finance.marketingExpenses + state.finance.eventExpenses;
   const busNetwork = transitNetwork("bus");
   const monorailNetwork = transitNetwork("monorail");
   const parkTrainNetwork = transitNetwork("park_train");
@@ -3959,11 +4216,18 @@ function updateToolLocks() {
   document.querySelectorAll("[data-tool]").forEach(button => {
     const toolName = button.dataset.tool;
     const requiredStars = TOOL_UNLOCK_STARS[toolName] || 1;
-    const locked = !isToolUnlocked(toolName);
+    const progressionLocked = !isToolUnlocked(toolName);
+    const seasonLocked = !seasonalRideAvailable(toolName);
+    const locked = progressionLocked || seasonLocked;
     if (!button.dataset.baseTitle) button.dataset.baseTitle = button.title || tools[toolName]?.label || "";
     button.disabled = locked;
     button.classList.toggle("locked", locked);
-    button.title = locked ? `評価${requiredStars}で解禁` : button.dataset.baseTitle;
+    const seasonal = SEASONAL_EVENTS[tools[toolName]?.limitedSeason];
+    button.title = progressionLocked
+      ? `評価${requiredStars}で解禁`
+      : seasonLocked
+        ? `${seasonal.seasonLabel}・${seasonal.label}開催中のみ建設できます`
+        : button.dataset.baseTitle;
   });
 }
 
@@ -4082,6 +4346,7 @@ function saveGame() {
     dayCondition: { ...state.dayCondition },
     finance: { ...state.finance },
     marketing: { ...state.marketing },
+    seasonalEvent: { ...state.seasonalEvent },
     guestLog: state.guestLog,
     staff: { ...state.staff },
     staffStats: { ...state.staffStats },
@@ -4149,7 +4414,8 @@ function loadGame() {
       maintenanceExpenses: Math.max(0, Number(save.finance?.maintenanceExpenses) || 0),
       staffExpenses: Math.max(0, Number(save.finance?.staffExpenses) || 0),
       restockExpenses: Math.max(0, Number(save.finance?.restockExpenses) || 0),
-      marketingExpenses: Math.max(0, Number(save.finance?.marketingExpenses) || 0)
+      marketingExpenses: Math.max(0, Number(save.finance?.marketingExpenses) || 0),
+      eventExpenses: Math.max(0, Number(save.finance?.eventExpenses) || 0)
     };
     const savedCampaign = MARKETING_CAMPAIGNS[save.marketing?.activeCampaign] ? save.marketing.activeCampaign : null;
     state.marketing = {
@@ -4158,6 +4424,18 @@ function loadGame() {
       attractedGuests: Math.max(0, Number(save.marketing?.attractedGuests) || 0),
       refusals: Math.max(0, Number(save.marketing?.refusals) || 0),
       campaignsStarted: Math.max(0, Number(save.marketing?.campaignsStarted) || 0)
+    };
+    const savedSeason = SEASONAL_EVENTS[save.seasonalEvent?.activeSeason] && save.seasonalEvent.activeSeason === seasonForRound()
+      ? save.seasonalEvent.activeSeason
+      : null;
+    const savedBoost = CROWD_EVENTS[save.seasonalEvent?.boostType] ? save.seasonalEvent.boostType : null;
+    state.seasonalEvent = {
+      activeSeason: savedSeason,
+      roundsRemaining: savedSeason ? Math.max(0, Number(save.seasonalEvent?.roundsRemaining) || 0) : 0,
+      boostType: savedBoost,
+      boostRoundsRemaining: savedBoost ? Math.max(0, Number(save.seasonalEvent?.boostRoundsRemaining) || 0) : 0,
+      eventsHosted: Math.max(0, Number(save.seasonalEvent?.eventsHosted) || 0),
+      boostedGuests: Math.max(0, Number(save.seasonalEvent?.boostedGuests) || 0)
     };
     state.guestLog = Array.isArray(save.guestLog)
       ? save.guestLog.slice(0, 6).map(entry => ({
@@ -4254,7 +4532,8 @@ function computeStats() {
     - queue * 1.8 - broken * 6 - admissionPenalty - debtPenalty - transitCrowdingPenalty;
   state.happy = clamp(joy, 18, 100);
   const revenue = state.finance.admissionRevenue + state.finance.rideRevenue + state.finance.shopRevenue;
-  const expenses = state.finance.maintenanceExpenses + state.finance.staffExpenses + state.finance.restockExpenses + state.finance.marketingExpenses;
+  const expenses = state.finance.maintenanceExpenses + state.finance.staffExpenses + state.finance.restockExpenses
+    + state.finance.marketingExpenses + state.finance.eventExpenses;
   const net = revenue - expenses;
   ui.money.textContent = `$${Math.round(state.money).toLocaleString()}`;
   ui.happy.textContent = `${Math.round(state.happy)}%`;
@@ -4279,6 +4558,7 @@ function computeStats() {
   ui.day.textContent = state.day;
   ui.round.textContent = state.round;
   renderDayCondition();
+  renderSeasonalEventPanel();
   ui.cleanerCount.textContent = state.staff.cleaners;
   ui.mechanicCount.textContent = state.staff.mechanics;
   const cleanerTeamStats = staffTeamStats("cleaner");
@@ -4611,6 +4891,10 @@ function getPlacementStatus(tile, toolName = selectedTool) {
   const tool = tools[toolName];
   if (!tool) return { valid: false, reason: "未対応のツールです" };
   if (!isToolUnlocked(toolName)) return { valid: false, reason: `パーク評価${TOOL_UNLOCK_STARS[toolName]}で解禁されます` };
+  if (!seasonalRideAvailable(toolName)) {
+    const event = SEASONAL_EVENTS[tool.limitedSeason];
+    return { valid: false, reason: `${event.seasonLabel}の${event.label}開催中のみ建設できます` };
+  }
   if (state.money < tool.cost) return { valid: false, reason: "資金が足りません" };
   if (toolName === "path") {
     const valid = tile.terrain !== "water" && !tile.object && !tile.path;
@@ -4912,9 +5196,10 @@ function inspect(tile) {
       const level = Number(tile.object.level || 1);
       const popularity = Math.round(Number(tile.object.popularity ?? RIDE_MANAGEMENT_CONFIG.startingPopularity));
       const upgradeCost = rideUpgradeCost(tile.object);
-      const status = tile.object.broken ? "故障中" : tile.object.open === false ? "運休中" : "営業中";
-      const waitLabel = tile.object.broken || tile.object.open === false ? "--" : `${wait}秒`;
-      body = `${status}。状態 ${Math.round(tile.object.condition ?? 100)}%、待ち列 ${tile.object.queue.length}人・推定${waitLabel}、乗車中 ${tile.object.riders.length}/${capacity}人、運転回数 ${tile.object.totalRides}回。`;
+      const seasonal = SEASONAL_EVENTS[t.limitedSeason];
+      const status = tile.object.broken ? "故障中" : !seasonalRideAvailable(tile.object.type) ? "シーズン休止中" : tile.object.open === false ? "運休中" : "営業中";
+      const waitLabel = tile.object.broken || tile.object.open === false || !seasonalRideAvailable(tile.object.type) ? "--" : `${wait}秒`;
+      body = `${status}。状態 ${Math.round(tile.object.condition ?? 100)}%、待ち列 ${tile.object.queue.length}人・推定${waitLabel}、乗車中 ${tile.object.riders.length}/${capacity}人、運転回数 ${tile.object.totalRides}回。${seasonal ? ` ${seasonal.seasonLabel}の${seasonal.label}開催中のみ稼働します。` : ""}`;
       controls = `<div class="ride-management-grid"><span>レベル<b>Lv.${level}</b></span><span>人気<b>${popularity}</b></span><span>維持費 / 精算<b>$${upkeep}</b></span><span>定員<b>${capacity}人</b></span><span>運転時間<b>${duration.toFixed(1)}秒</b></span><span>整備開始<b>${rideMaintenanceThreshold(tile.object)}%</b></span></div><div class="inline-economy"><span>乗車料金</span><div class="stepper"><button data-action="ride-price-down" title="乗車料金を下げる">−</button><b>$${tile.object.price}</b><button data-action="ride-price-up" title="乗車料金を上げる">＋</button></div></div><span class="ride-policy-label">整備方針</span><div class="ride-policy-control">${Object.entries(RIDE_MANAGEMENT_CONFIG.policies).map(([key, policy]) => `<button class="${tile.object.maintenancePolicy === key ? "active" : ""}" data-action="ride-policy" data-policy="${key}">${policy.label}</button>`).join("")}</div><div class="ride-development-actions"><button class="${tile.object.open !== false ? "active" : ""}" data-action="ride-open-toggle">${tile.object.open === false ? "営業を再開" : "運休する"}</button><button data-action="ride-upgrade" ${upgradeCost <= 0 || tile.object.broken ? "disabled" : ""}>${upgradeCost > 0 ? `Lv.${level + 1}改良 $${upgradeCost}` : "改良完了"}</button></div>`;
     }
     else if (t.transit) {
@@ -5128,6 +5413,11 @@ function selectTool(tool, options = {}) {
   if (!btn || !tools[tool]) return false;
   if (!isToolUnlocked(tool)) {
     if (!options.silent) toast(`${tools[tool].label}はパーク評価${TOOL_UNLOCK_STARS[tool]}で解禁されます`);
+    return false;
+  }
+  if (!seasonalRideAvailable(tool)) {
+    const event = SEASONAL_EVENTS[tools[tool].limitedSeason];
+    if (!options.silent) toast(`${tools[tool].label}は${event.seasonLabel}の${event.label}開催中のみ建設できます`);
     return false;
   }
   selectedTool = tool;
@@ -5667,6 +5957,8 @@ function showRoundReport(report) {
     <span>評価報奨<b>$${report.ratingBonus.toLocaleString()}</b></span>`;
   const achievements = [
     `<p class="condition-note">${DAY_CONDITIONS[report.condition]?.label || "晴れ"}の営業を終了。新ラウンドは${currentDayCondition().label}、次回予報は${DAY_CONDITIONS[state.dayCondition.next].label}です。</p>`,
+    ...(report.seasonalEvent ? [`<p class="season-note">${report.seasonalEvent}を開催し、イベント来園者は累計${report.boostedGuests}人になりました。</p>`] : []),
+    ...(report.crowdEvent ? [`<p class="season-note">集客イベント「${report.crowdEvent}」が終了しました。</p>`] : []),
     ...report.completedGoals.map(status => `<p>目標達成: ${status.goal.label}　+$${status.goal.reward.toLocaleString()}</p>`),
     ...report.newUnlocks.map(label => `<p>新解禁: ${label}</p>`)
   ];
@@ -5685,6 +5977,8 @@ function closeRoundReport() {
 }
 
 function settleRound() {
+  const seasonalEvent = activeSeasonalEvent();
+  const crowdEvent = activeCrowdEvent();
   const metrics = getManagementMetrics();
   const rating = calculateParkRating(metrics);
   const completedGoals = state.progression.activeGoalIds
@@ -5705,6 +5999,9 @@ function settleRound() {
     expenses: metrics.expenses,
     net: metrics.net,
     rating,
+    seasonalEvent: seasonalEvent?.label || null,
+    crowdEvent: crowdEvent?.label || null,
+    boostedGuests: state.seasonalEvent.boostedGuests,
     completedGoals,
     newUnlocks,
     goalReward,
@@ -5715,6 +6012,7 @@ function settleRound() {
   state.progression.reports.unshift(report);
   state.progression.reports = state.progression.reports.slice(0, 8);
   state.round++;
+  advanceSeasonalEvents();
   state.day++;
   state.dayCondition.current = state.dayCondition.next;
   state.dayCondition.next = rollDayCondition(state.dayCondition.current);
@@ -5744,6 +6042,9 @@ ui.openingMusic.addEventListener("error", () => {
 });
 
 ui.roundBtn.addEventListener("click", settleRound);
+ui.seasonEventBtn.addEventListener("click", () => startSeasonalEvent());
+ui.paradeEventBtn.addEventListener("click", () => startCrowdEvent("parade"));
+ui.fireworksEventBtn.addEventListener("click", () => startCrowdEvent("fireworks"));
 ui.closeReportBtn.addEventListener("click", closeRoundReport);
 ui.continueReportBtn.addEventListener("click", closeRoundReport);
 
@@ -5879,7 +6180,7 @@ window.parkDebug = {
       averageCondition: Math.round(state.rides.length
         ? state.rides.reduce((sum, ride) => sum + Number(ride.condition ?? 100), 0) / state.rides.length
         : 100),
-      openRides: state.rides.filter(ride => ride.open !== false).length,
+      openRides: state.rides.filter(ride => ride.open !== false && seasonalRideAvailable(ride.type)).length,
       averageRidePopularity: Math.round(state.rides.length ? state.rides.reduce((sum, ride) => sum + Number(ride.popularity ?? RIDE_MANAGEMENT_CONFIG.startingPopularity), 0) / state.rides.length : 0),
       upgradedRides: state.rides.filter(ride => Number(ride.level || 1) > 1).length,
       cleaners: state.staff.cleaners,
@@ -5904,6 +6205,14 @@ window.parkDebug = {
       openingMusicAvailable,
       dayCondition: state.dayCondition.current,
       nextDayCondition: state.dayCondition.next,
+      season: seasonForRound(),
+      seasonalEvent: state.seasonalEvent.activeSeason,
+      seasonalRoundsRemaining: state.seasonalEvent.roundsRemaining,
+      crowdEvent: state.seasonalEvent.boostType,
+      crowdEventRoundsRemaining: state.seasonalEvent.boostRoundsRemaining,
+      eventsHosted: state.seasonalEvent.eventsHosted,
+      boostedGuests: state.seasonalEvent.boostedGuests,
+      seasonalRides: state.rides.filter(ride => !!tools[ride.type]?.limitedSeason).length,
       selectedTool,
       analysisMode,
       busiestTraffic: Number(Math.max(0, ...state.tiles.map(tile => Number(tile.traffic || 0))).toFixed(1)),
@@ -5983,6 +6292,16 @@ window.parkDebug = {
   dayConditionArrivalInterval,
   guestNeedRates,
   renderDayCondition,
+  seasonForRound,
+  currentSeasonEvent,
+  activeSeasonalEvent,
+  activeCrowdEvent,
+  seasonalRideAvailable,
+  seasonalArrivalInterval,
+  startSeasonalEvent,
+  startCrowdEvent,
+  advanceSeasonalEvents,
+  renderSeasonalEventPanel,
   renderMarketingPanel,
   setAnalysisMode,
   getAnalysisMetrics,

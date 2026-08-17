@@ -608,6 +608,7 @@ button.active { background: #26313f; color: #fff8df; }
 .report-achievements p { margin: 0; padding: 7px 9px; background: rgba(102, 184, 107, .12); border-left: 3px solid var(--green); border-radius: 4px; font-size: 10px; line-height: 1.4; }
 .report-achievements p.neutral { background: rgba(38, 49, 63, .05); border-left-color: var(--muted); }
 .report-achievements p.condition-note { background: rgba(73, 171, 194, .1); border-left-color: var(--teal); }
+.report-achievements p.season-note { background: rgba(121, 109, 192, .1); border-left-color: #796dc0; }
 .round-report-dialog > .primary { margin: 0; }
 
 .zoom-controls {
@@ -692,6 +693,79 @@ h1 { margin: 0; font-size: 21px; }
 .condition-panel[data-condition="rain"] .condition-effects b { color: #39768f; }
 .condition-panel[data-condition="holiday"] .condition-heading span strong,
 .condition-panel[data-condition="holiday"] .condition-effects b { color: #317f69; }
+
+.season-panel {
+  margin: 10px 0 12px;
+  padding: 10px;
+  background: rgba(255, 255, 255, .48);
+  border: 1px solid var(--line);
+  border-left: 4px solid #e98fa8;
+  border-radius: 7px;
+}
+
+.season-panel[data-season="summer"] { border-left-color: #36a8c8; }
+.season-panel[data-season="autumn"] { border-left-color: #d88a32; }
+.season-panel[data-season="winter"] { border-left-color: #796dc0; }
+
+.season-heading,
+.season-heading > span,
+.season-event-title,
+.season-event-title > span,
+.crowd-event-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.season-heading,
+.season-event-title,
+.crowd-event-heading { align-items: center; }
+.season-heading > span { flex-direction: column; gap: 1px; }
+.season-heading small { color: var(--muted); font-size: 8px; font-weight: 800; }
+.season-heading strong { font-size: 16px; }
+.season-heading > b { color: var(--muted); font-size: 9px; }
+
+.season-event-title { margin-top: 7px; padding-top: 7px; border-top: 1px solid rgba(38, 49, 63, .09); }
+.season-event-title > span { align-items: center; justify-content: flex-start; }
+.season-event-title i { width: 10px; height: 10px; border-radius: 3px; }
+.season-event-title b { font-size: 11px; }
+.season-event-title small { color: var(--teal); font-size: 8px; font-weight: 900; }
+
+.season-effects {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.season-effects span {
+  min-width: 0;
+  padding: 5px 3px;
+  background: rgba(38, 49, 63, .05);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 8px;
+  text-align: center;
+}
+
+.season-effects b { display: block; margin-top: 2px; color: var(--ink); font-size: 9px; overflow-wrap: anywhere; }
+.season-event-button { width: 100%; min-height: 34px; margin-top: 6px; padding: 5px 8px; background: rgba(233, 143, 168, .14); font-size: 9px; }
+.season-panel[data-season="summer"] .season-event-button { background: rgba(54, 168, 200, .13); }
+.season-panel[data-season="autumn"] .season-event-button { background: rgba(216, 138, 50, .13); }
+.season-panel[data-season="winter"] .season-event-button { background: rgba(121, 109, 192, .13); }
+.season-event-button:disabled { opacity: .62; cursor: default; }
+
+.crowd-event-heading { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(38, 49, 63, .09); }
+.crowd-event-heading b { font-size: 9px; }
+.crowd-event-heading small { color: var(--muted); font-size: 8px; }
+.crowd-event-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; margin-top: 5px; }
+.crowd-event-options button { min-width: 0; min-height: 38px; padding: 5px; text-align: left; }
+.crowd-event-options b,
+.crowd-event-options small { display: block; }
+.crowd-event-options b { font-size: 8px; }
+.crowd-event-options small { margin-top: 2px; color: var(--muted); font-size: 7px; }
+.crowd-event-options button.active small { color: rgba(255, 255, 255, .76); }
+.season-panel > p { margin: 6px 0 0; color: var(--muted); font-size: 8px; line-height: 1.4; }
 
 .analysis-panel {
   margin: 10px 0 12px;

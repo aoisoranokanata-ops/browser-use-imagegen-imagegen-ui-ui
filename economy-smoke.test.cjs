@@ -48,7 +48,7 @@ element("game").getContext = () => context2d;
 
 const toolNames = [
   "inspect", "path", "remove", "bus_stop", "monorail_track", "monorail_station", "train_track", "train_station", "carousel", "wheel", "coaster",
-  "teacups", "kiosk", "drink_stand", "souvenir_shop", "bench", "trash_bin", "toilet", "tree", "shrub", "flower", "palm", "water", "decor"
+  "teacups", "flower_swing", "splash_boats", "harvest_spin", "aurora_tower", "kiosk", "drink_stand", "souvenir_shop", "bench", "trash_bin", "toilet", "tree", "shrub", "flower", "palm", "water", "decor"
 ];
 const toolButtons = new Map(toolNames.map(name => {
   const button = new MockElement();
@@ -148,6 +148,43 @@ debug.setDayCondition("rain", "sunny");
 debug.loadGame();
 assert.equal(state.dayCondition.current, "holiday");
 assert.equal(state.dayCondition.next, "rain", "condition forecasts should survive save/load");
+assert.equal(debug.seasonForRound(1), "spring");
+assert.equal(debug.seasonForRound(4), "summer");
+assert.equal(debug.seasonForRound(7), "autumn");
+assert.equal(debug.seasonForRound(10), "winter");
+assert.equal(debug.seasonalRideAvailable("flower_swing"), false);
+assert.equal(debug.getPlacementStatus(state.tiles.find(tile => tile.x === 15 && tile.y === 15), "flower_swing").valid, false);
+const moneyBeforeSeasonEvent = state.money;
+const baseSeasonInterval = debug.seasonalArrivalInterval(10);
+assert.equal(debug.startSeasonalEvent({ silent: true }), true);
+assert.equal(state.money, moneyBeforeSeasonEvent - 700);
+assert.equal(state.finance.eventExpenses, 700);
+assert.equal(debug.activeSeasonalEvent().label, "桜フェス");
+assert.equal(debug.seasonalRideAvailable("flower_swing"), true);
+assert.equal(debug.seasonalRideAvailable("splash_boats"), false);
+assert.equal(debug.getPlacementStatus(state.tiles.find(tile => tile.x === 15 && tile.y === 15), "flower_swing").valid, true);
+debug.buildAt(15, 15, "flower_swing");
+assert.equal(debug.summary().seasonalRides, 1, "the matching limited ride should be buildable during its event");
+assert.equal(debug.undoLastBuild(), true);
+debug.setTool("inspect");
+assert.ok(debug.seasonalArrivalInterval(10) < baseSeasonInterval, "seasonal events should increase arrivals");
+assert.equal(debug.startCrowdEvent("parade", { silent: true }), true);
+assert.equal(state.finance.eventExpenses, 1200);
+assert.ok(debug.seasonalArrivalInterval(10) < 10 / 1.18, "crowd events should stack with the seasonal draw");
+assert.match(element("seasonEventStatus").textContent, /開催中/);
+assert.match(element("crowdEventStatus").textContent, /ミニパレード/);
+debug.saveGame();
+state.seasonalEvent.activeSeason = null;
+state.seasonalEvent.roundsRemaining = 0;
+state.seasonalEvent.boostType = null;
+state.seasonalEvent.boostRoundsRemaining = 0;
+debug.loadGame();
+assert.equal(state.seasonalEvent.activeSeason, "spring", "seasonal events should survive save/load");
+assert.equal(state.seasonalEvent.boostType, "parade", "crowd events should survive save/load");
+state.money = moneyBeforeSeasonEvent;
+state.finance.eventExpenses = 0;
+state.seasonalEvent = { activeSeason: null, roundsRemaining: 0, boostType: null, boostRoundsRemaining: 0, eventsHosted: 0, boostedGuests: 0 };
+debug.advanceSeasonalEvents();
 debug.setDayCondition("sunny", "heatwave");
 const forecastGuest = {
   done: false,

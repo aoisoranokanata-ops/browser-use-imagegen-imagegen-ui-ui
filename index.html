@@ -83,6 +83,10 @@
           <button data-tool="wheel" title="観覧車">$3.2k<span>観覧車</span></button>
           <button data-tool="coaster" title="コースター駅">$4.8k<span>コースター</span></button>
           <button data-tool="teacups" title="ティーカップ">$1.4k<span>カップ</span></button>
+          <button data-tool="flower_swing" title="春・桜フェス限定">$2.6k<span>桜スイング</span></button>
+          <button data-tool="splash_boats" title="夏・サマースプラッシュ限定">$3.1k<span>水上ボート</span></button>
+          <button data-tool="harvest_spin" title="秋・ハーベストカーニバル限定">$2.8k<span>収穫スピン</span></button>
+          <button data-tool="aurora_tower" title="冬・スノーライトフェス限定">$3.6k<span>光のタワー</span></button>
         </div>
       </div>
 
@@ -137,6 +141,28 @@
           <span>ライド<b id="conditionRide">屋外 +</b></span>
         </div>
         <p id="conditionHint">過ごしやすい一日です。売店とライドをバランスよく運営しましょう。</p>
+      </section>
+      <section id="seasonPanel" class="season-panel" data-season="spring" aria-label="季節イベント">
+        <div class="season-heading">
+          <span><small>シーズン</small><strong id="seasonName">春</strong></span>
+          <b id="seasonRemaining">あと3ラウンド</b>
+        </div>
+        <div class="season-event-title">
+          <span><i id="seasonSwatch" aria-hidden="true"></i><b id="seasonEventName">桜フェス</b></span>
+          <small id="seasonEventStatus">未開催</small>
+        </div>
+        <div class="season-effects">
+          <span>来園<b id="seasonArrival">+18%</b></span>
+          <span>売店<b id="seasonDemand">土産 +</b></span>
+          <span>限定遊具<b id="seasonRide">桜スイング</b></span>
+        </div>
+        <button id="seasonEventBtn" class="season-event-button" type="button">桜フェスを開催 $700</button>
+        <div class="crowd-event-heading"><b>集客UPイベント</b><small id="crowdEventStatus">未実施</small></div>
+        <div class="crowd-event-options">
+          <button id="paradeEventBtn" type="button"><b>ミニパレード</b><small>来園 +14%・$500</small></button>
+          <button id="fireworksEventBtn" type="button"><b>花火ナイト</b><small>来園 +28%・$850</small></button>
+        </div>
+        <p id="seasonHint">イベント開催中は限定ライドを建設でき、来園者と売店需要が増えます。</p>
       </section>
       <section class="analysis-panel" aria-label="パーク分析">
         <div class="analysis-heading">
