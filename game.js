@@ -29,7 +29,13 @@ const ui = {
   seasonArrival: document.getElementById("seasonArrival"),
   seasonDemand: document.getElementById("seasonDemand"),
   seasonRide: document.getElementById("seasonRide"),
+  seasonPlant: document.getElementById("seasonPlant"),
   seasonEventBtn: document.getElementById("seasonEventBtn"),
+  seasonChallenge: document.getElementById("seasonChallenge"),
+  seasonChallengeStatus: document.getElementById("seasonChallengeStatus"),
+  seasonChallengeRank: document.getElementById("seasonChallengeRank"),
+  seasonChallengeList: document.getElementById("seasonChallengeList"),
+  seasonChallengeReward: document.getElementById("seasonChallengeReward"),
   paradeEventBtn: document.getElementById("paradeEventBtn"),
   fireworksEventBtn: document.getElementById("fireworksEventBtn"),
   crowdEventStatus: document.getElementById("crowdEventStatus"),
@@ -223,12 +229,24 @@ const LAND_THEMES = {
   }
 };
 const DIFFICULTY_CONFIGS = {
-  beginner: { label: "はじめて", initialMoney: 30000, costMultiplier: .8, graceRounds: 2, graceMultiplier: .5 },
-  standard: { label: "標準", initialMoney: 24000, costMultiplier: .95, graceRounds: 1, graceMultiplier: .75 },
-  challenge: { label: "挑戦", initialMoney: 18000, costMultiplier: 1, graceRounds: 0, graceMultiplier: 1 }
+  beginner: {
+    label: "初級", initialMoney: 36000, costMultiplier: .62, graceRounds: 4, graceMultiplier: .55,
+    revenueMultiplier: 1.25, arrivalMultiplier: .86, guestCapBonus: 6, refusalMultiplier: .6,
+    wearMultiplier: .68, failureMultiplier: .55, satisfactionBonus: 5, challengeMultiplier: .8
+  },
+  standard: {
+    label: "普通", initialMoney: 24000, costMultiplier: 1, graceRounds: 1, graceMultiplier: .85,
+    revenueMultiplier: 1, arrivalMultiplier: 1, guestCapBonus: 0, refusalMultiplier: 1,
+    wearMultiplier: 1, failureMultiplier: 1, satisfactionBonus: 0, challengeMultiplier: 1
+  },
+  challenge: {
+    label: "上級", initialMoney: 16000, costMultiplier: 1.25, graceRounds: 0, graceMultiplier: 1,
+    revenueMultiplier: .9, arrivalMultiplier: 1.15, guestCapBonus: -2, refusalMultiplier: 1.2,
+    wearMultiplier: 1.3, failureMultiplier: 1.4, satisfactionBonus: -3, challengeMultiplier: 1.2
+  }
 };
 const SHOP_CONFIG = {
-  capacities: { beginner: 60, standard: 45, challenge: 30 },
+  capacities: { beginner: 72, standard: 45, challenge: 30 },
   deliverySize: 30,
   deliverySeconds: 8,
   autoUnitCost: 3,
@@ -273,31 +291,42 @@ const SEASONAL_EVENTS = {
   spring: {
     seasonLabel: "春", label: "桜フェス", cost: 700, duration: 2, arrivalRate: 1.18,
     hungerRate: 1, thirstRate: 1, souvenirRate: 1.22, satisfaction: 2,
-    ride: "flower_swing", targets: ["family", "scenic"], demandLabel: "土産 +", color: "#e98fa8",
+    ride: "flower_swing", plant: "cherry_tree", targets: ["family", "scenic"], demandLabel: "土産 +", color: "#e98fa8",
+    challenge: { guests: 16, rides: 6, shopSales: 4, shopKind: "souvenir" },
     hint: "桜フェスは景観好きと家族連れに好評です。おみやげ在庫を少し厚めにしましょう。"
   },
   summer: {
     seasonLabel: "夏", label: "サマースプラッシュ", cost: 850, duration: 2, arrivalRate: 1.24,
     hungerRate: .95, thirstRate: 1.38, souvenirRate: 1, satisfaction: 2,
-    ride: "splash_boats", targets: ["thrill", "family"], demandLabel: "飲料 ↑↑", color: "#36a8c8",
+    ride: "splash_boats", plant: "sunflower_garden", targets: ["thrill", "family"], demandLabel: "飲料 ↑↑", color: "#36a8c8",
+    challenge: { guests: 20, rides: 8, shopSales: 6, shopKind: "drink" },
     hint: "夏イベントは来園効果が最大です。ドリンクの在庫切れと水上ボートの行列に注意しましょう。"
   },
   autumn: {
     seasonLabel: "秋", label: "ハーベストカーニバル", cost: 750, duration: 2, arrivalRate: 1.2,
     hungerRate: 1.34, thirstRate: 1, souvenirRate: 1.16, satisfaction: 2,
-    ride: "harvest_spin", targets: ["foodie", "family"], demandLabel: "フード ↑", color: "#d88a32",
+    ride: "harvest_spin", plant: "maple_tree", targets: ["foodie", "family"], demandLabel: "フード ↑", color: "#d88a32",
+    challenge: { guests: 18, rides: 7, shopSales: 6, shopKind: "food" },
     hint: "秋イベントではフード需要が伸びます。売店の店員と自動発注を確認してから開催しましょう。"
   },
   winter: {
     seasonLabel: "冬", label: "スノーライトフェス", cost: 900, duration: 2, arrivalRate: 1.22,
     hungerRate: 1.18, thirstRate: .82, souvenirRate: 1.42, satisfaction: 3,
-    ride: "aurora_tower", targets: ["scenic", "relaxed"], demandLabel: "土産 ↑↑", color: "#796dc0",
+    ride: "aurora_tower", plant: "christmas_tree", targets: ["scenic", "relaxed"], demandLabel: "土産 ↑↑", color: "#796dc0",
+    challenge: { guests: 18, rides: 7, shopSales: 5, shopKind: "souvenir" },
     hint: "冬のライトアップは満足度とおみやげ需要を大きく伸ばします。光のタワーが目玉です。"
   }
 };
 const CROWD_EVENTS = {
   parade: { label: "ミニパレード", cost: 500, duration: 1, arrivalRate: 1.14, satisfaction: 1 },
   fireworks: { label: "花火ナイト", cost: 850, duration: 1, arrivalRate: 1.28, satisfaction: 2 }
+};
+const SEASON_CHALLENGE_RANKS = {
+  none: { label: "--", reward: 0, level: 0 },
+  entry: { label: "参加", reward: 0, level: 1 },
+  bronze: { label: "ブロンズ", reward: 600, level: 2 },
+  silver: { label: "シルバー", reward: 1000, level: 3 },
+  gold: { label: "ゴールド", reward: 1600, level: 4 }
 };
 const DAY_CONDITIONS = {
   sunny: {
@@ -432,6 +461,10 @@ const tools = {
   shrub: { cost: 80, label: "低木", scenery: 3 },
   flower: { cost: 100, label: "花壇", scenery: 5 },
   palm: { cost: 180, label: "ヤシ", scenery: 6 },
+  cherry_tree: { cost: 300, label: "桜の木", scenery: 14, seasonalPlant: "spring", limitedSeason: "spring", synergy: 10 },
+  sunflower_garden: { cost: 260, label: "ひまわりガーデン", scenery: 12, seasonalPlant: "summer", limitedSeason: "summer", synergy: 10 },
+  maple_tree: { cost: 320, label: "楓の木", scenery: 15, seasonalPlant: "autumn", limitedSeason: "autumn", synergy: 11 },
+  christmas_tree: { cost: 380, label: "クリスマスツリー", scenery: 16, seasonalPlant: "winter", limitedSeason: "winter", synergy: 12 },
   water: { cost: 160, label: "水辺", scenery: 2 },
   decor: { cost: 220, label: "装飾", scenery: 6 }
 };
@@ -472,6 +505,7 @@ let staffSequence = 0;
 let transitRenderSignature = "";
 let progressionRenderSignature = "";
 let landRenderSignature = "";
+let seasonalChallengeRenderSignature = "";
 let selectedLandZoneId = "core";
 const undoStack = [];
 
@@ -509,7 +543,11 @@ const state = {
     boostType: null,
     boostRoundsRemaining: 0,
     eventsHosted: 0,
-    boostedGuests: 0
+    boostedGuests: 0,
+    challenge: null,
+    bestRanks: {},
+    lastResult: null,
+    challengeHistory: []
   },
   staff: { cleaners: 1, mechanics: 1 },
   staffStats: { cleaningJobs: 0, repairJobs: 0 },
@@ -1298,6 +1336,7 @@ function drawObject(tile, p) {
   if (type === "shrub") drawShrub(p);
   if (type === "flower") drawFlowerBed(p);
   if (type === "palm") drawPalm(p);
+  if (tools[type]?.seasonalPlant) drawSeasonalPlant(type, p, tile);
   if (type === "decor") drawDecor(p);
 }
 
@@ -1781,6 +1820,82 @@ function drawTree(p) {
     ctx.beginPath();
     ctx.arc((x - r * .25) * z, (y - r * .28) * z, r * .28 * z, 0, Math.PI * 2);
     ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawSeasonalPlant(type, p, tile) {
+  const z = camera.zoom;
+  const t = performance.now() / 1000;
+  ctx.save();
+  ctx.translate(p.x, p.y + 19 * z);
+  drawSoftShadow(0, 1 * z, 20 * z, 7 * z, .16);
+  if (type === "sunflower_garden") {
+    drawCylinder(0, 2 * z, 21 * z, 6 * z, "#74b964", "#4b914e");
+    for (const [x, y, h] of [[-13,-1,19],[-5,2,25],[5,0,22],[13,3,17]]) {
+      ctx.strokeStyle = "#4f9e5a";
+      ctx.lineWidth = 2.5 * z;
+      ctx.beginPath(); ctx.moveTo(x * z, y * z); ctx.lineTo(x * z, (y - h) * z); ctx.stroke();
+      ctx.fillStyle = "#f4c84d";
+      ctx.beginPath(); ctx.arc(x * z, (y - h) * z, 7 * z, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#72513a";
+      ctx.beginPath(); ctx.arc(x * z, (y - h) * z, 3 * z, 0, Math.PI * 2); ctx.fill();
+    }
+  } else {
+    ctx.fillStyle = type === "christmas_tree" ? "#72513a" : "#8b6a42";
+    ctx.fillRect(-4 * z, -22 * z, 8 * z, 28 * z);
+    if (type === "cherry_tree") {
+      for (const [x, y, r, color] of [[0,-39,16,"#f6b1c5"],[-13,-31,13,"#ef93b1"],[13,-31,14,"#ffd2dd"],[0,-25,12,"#f8c1cf"]]) {
+        ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x * z, y * z, r * z, 0, Math.PI * 2); ctx.fill();
+      }
+      for (let i = 0; i < 5; i++) {
+        const drift = (t * 7 + i * 11) % 28;
+        ctx.fillStyle = i % 2 ? "#fff0f4" : "#ef93b1";
+        ctx.beginPath(); ctx.ellipse((-18 + i * 9) * z, (-30 + drift) * z, 2.2 * z, 1.3 * z, .5, 0, Math.PI * 2); ctx.fill();
+      }
+    } else if (type === "maple_tree") {
+      for (const [x, y, r, color] of [[0,-40,17,"#d95d39"],[-14,-31,13,"#ef8a38"],[14,-31,14,"#c94b3d"],[-2,-24,12,"#f1ad3f"]]) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        for (let i = 0; i < 8; i++) {
+          const a = i * Math.PI / 4;
+          const rr = (i % 2 ? r * .7 : r) * z;
+          const px = x * z + Math.cos(a) * rr;
+          const py = y * z + Math.sin(a) * rr;
+          if (!i) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.closePath(); ctx.fill();
+      }
+    } else if (type === "christmas_tree") {
+      for (const [y, width, color] of [[-50,13,"#347956"],[-38,20,"#3f8c5a"],[-25,27,"#2f704e"]]) {
+        ctx.fillStyle = color;
+        ctx.beginPath(); ctx.moveTo(0, y * z); ctx.lineTo(width * z, (y + 27) * z); ctx.lineTo(-width * z, (y + 27) * z); ctx.closePath(); ctx.fill();
+      }
+      for (const [x, y, color] of [[-8,-35,"#ef6f61"],[8,-27,"#49abc2"],[-13,-17,"#f1b84f"],[12,-11,"#ef6f61"],[1,-21,"#fff7df"]]) {
+        ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x * z, y * z, 2.7 * z, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = "#f1b84f";
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + i * Math.PI / 5;
+        const r = (i % 2 ? 4 : 8) * z;
+        const x = Math.cos(a) * r;
+        const y = -53 * z + Math.sin(a) * r;
+        if (!i) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.closePath(); ctx.fill();
+    }
+  }
+  const synergy = seasonalPlantSynergyForTile(tile);
+  if (synergy > 0) {
+    ctx.strokeStyle = "rgba(241,184,79,.9)";
+    ctx.lineWidth = 2 * z;
+    ctx.beginPath(); ctx.ellipse(0, 2 * z, 25 * z, 9 * z, 0, 0, Math.PI * 2); ctx.stroke();
+    for (let i = 0; i < 4; i++) {
+      const a = t * 1.5 + i * Math.PI / 2;
+      ctx.fillStyle = "#fff2a8";
+      ctx.beginPath(); ctx.arc(Math.cos(a) * 22 * z, (-8 + Math.sin(a) * 8) * z, 2 * z, 0, Math.PI * 2); ctx.fill();
+    }
   }
   ctx.restore();
 }
@@ -2678,6 +2793,94 @@ function seasonalRideGuestBonus(guest, ride) {
   return 9 + (event.targets.includes(guest?.archetype) ? 9 : 0);
 }
 
+function seasonalChallengeDifficultyFactor() {
+  return difficultyConfig().challengeMultiplier;
+}
+
+function seasonalChallengeTargets(challenge = state.seasonalEvent.challenge) {
+  const season = challenge?.season || seasonForRound();
+  const event = SEASONAL_EVENTS[season];
+  const plannedRounds = Math.max(1, Number(challenge?.plannedRounds || Math.min(event.duration, 3 - ((state.round - 1) % 3))));
+  const scale = plannedRounds / event.duration * seasonalChallengeDifficultyFactor();
+  return {
+    guests: Math.max(1, Math.ceil(event.challenge.guests * scale)),
+    rides: Math.max(1, Math.ceil(event.challenge.rides * scale)),
+    shopSales: Math.max(1, Math.ceil(event.challenge.shopSales * scale)),
+    synergy: Number(tools[event.plant].synergy || 0),
+    shopKind: event.challenge.shopKind
+  };
+}
+
+function seasonalChallengeSynergy(challenge = state.seasonalEvent.challenge) {
+  const season = challenge?.season;
+  const event = SEASONAL_EVENTS[season];
+  if (!event) return 0;
+  return state.tiles.reduce((sum, tile) => {
+    if (tools[tile.object?.type]?.seasonalPlant !== season || !matchingSeasonalRideNearPlant(tile)) return sum;
+    return sum + Number(tools[tile.object.type].synergy || 0);
+  }, 0);
+}
+
+function seasonalChallengeProgress(challenge = state.seasonalEvent.challenge) {
+  const preview = challenge || {
+    season: seasonForRound(),
+    plannedRounds: Math.min(currentSeasonEvent().duration, 3 - ((state.round - 1) % 3)),
+    guests: 0,
+    rides: 0,
+    shopSales: 0
+  };
+  const targets = seasonalChallengeTargets(preview);
+  const values = {
+    guests: Math.max(0, Number(preview.guests || 0)),
+    rides: Math.max(0, Number(preview.rides || 0)),
+    shopSales: Math.max(0, Number(preview.shopSales || 0)),
+    synergy: seasonalChallengeSynergy(preview)
+  };
+  const completed = ["guests", "rides", "shopSales", "synergy"].filter(key => values[key] >= targets[key]).length;
+  const rankKey = completed >= 4 ? "gold" : completed === 3 ? "silver" : completed === 2 ? "bronze" : challenge ? "entry" : "none";
+  return { challenge: preview, targets, values, completed, rankKey, rank: SEASON_CHALLENGE_RANKS[rankKey] };
+}
+
+function recordSeasonalChallenge(metric, amount = 1, detail = null) {
+  const challenge = state.seasonalEvent.challenge;
+  const event = activeSeasonalEvent();
+  if (!challenge || !event || challenge.season !== seasonForRound()) return false;
+  if (metric === "rides" && detail !== event.ride) return false;
+  if (metric === "shopSales" && detail !== event.challenge.shopKind) return false;
+  if (!['guests', 'rides', 'shopSales'].includes(metric)) return false;
+  challenge[metric] = Math.max(0, Number(challenge[metric] || 0) + Math.max(0, Number(amount) || 0));
+  return true;
+}
+
+function finishSeasonalChallenge() {
+  const challenge = state.seasonalEvent.challenge;
+  if (!challenge) return null;
+  const progress = seasonalChallengeProgress(challenge);
+  const event = SEASONAL_EVENTS[challenge.season];
+  const result = {
+    season: challenge.season,
+    eventLabel: event.label,
+    rankKey: progress.rankKey,
+    rankLabel: progress.rank.label,
+    reward: progress.rank.reward,
+    completed: progress.completed,
+    targets: { ...progress.targets },
+    values: { ...progress.values },
+    round: state.round
+  };
+  state.money += result.reward;
+  state.sentiment = clamp(state.sentiment + progress.rank.level * .6, -20, 20);
+  const previousBest = state.seasonalEvent.bestRanks[challenge.season];
+  if (!previousBest || SEASON_CHALLENGE_RANKS[result.rankKey].level > SEASON_CHALLENGE_RANKS[previousBest].level) {
+    state.seasonalEvent.bestRanks[challenge.season] = result.rankKey;
+  }
+  state.seasonalEvent.lastResult = result;
+  state.seasonalEvent.challengeHistory.unshift(result);
+  state.seasonalEvent.challengeHistory = state.seasonalEvent.challengeHistory.slice(0, 8);
+  state.seasonalEvent.challenge = null;
+  return result;
+}
+
 function startSeasonalEvent(options = {}) {
   const season = seasonForRound();
   const event = SEASONAL_EVENTS[season];
@@ -2693,11 +2896,19 @@ function startSeasonalEvent(options = {}) {
   state.finance.eventExpenses += event.cost;
   state.seasonalEvent.activeSeason = season;
   state.seasonalEvent.roundsRemaining = Math.min(event.duration, 3 - ((state.round - 1) % 3));
+  state.seasonalEvent.challenge = {
+    season,
+    startedRound: state.round,
+    plannedRounds: state.seasonalEvent.roundsRemaining,
+    guests: 0,
+    rides: 0,
+    shopSales: 0
+  };
   state.seasonalEvent.eventsHosted++;
   state.sentiment = clamp(state.sentiment + 1, -20, 20);
   updateToolLocks();
   computeStats();
-  if (!options.silent) toast(`${event.label}を開催しました。${tools[event.ride].label}が建設できます`);
+  if (!options.silent) toast(`${event.label}を開催しました。${tools[event.ride].label}と${tools[event.plant].label}が建設できます`);
   return true;
 }
 
@@ -2724,6 +2935,7 @@ function startCrowdEvent(type, options = {}) {
 }
 
 function advanceSeasonalEvents() {
+  const challengeResult = state.seasonalEvent.roundsRemaining === 1 ? finishSeasonalChallenge() : null;
   state.seasonalEvent.roundsRemaining = Math.max(0, state.seasonalEvent.roundsRemaining - 1);
   state.seasonalEvent.boostRoundsRemaining = Math.max(0, state.seasonalEvent.boostRoundsRemaining - 1);
   if (!state.seasonalEvent.roundsRemaining) state.seasonalEvent.activeSeason = null;
@@ -2740,6 +2952,7 @@ function advanceSeasonalEvents() {
   if (!seasonalRideAvailable(selectedTool)) selectTool("inspect", { silent: true, close: false });
   if (tools[selectedTile?.object?.type]?.limitedSeason) inspect(selectedTile);
   updateToolLocks();
+  return challengeResult;
 }
 
 function renderSeasonalEventPanel() {
@@ -2757,14 +2970,54 @@ function renderSeasonalEventPanel() {
   ui.seasonArrival.textContent = `+${Math.round((event.arrivalRate - 1) * 100)}%`;
   ui.seasonDemand.textContent = event.demandLabel;
   ui.seasonRide.textContent = tools[event.ride].label;
+  ui.seasonPlant.textContent = tools[event.plant].label;
   ui.seasonEventBtn.textContent = active ? `${event.label} 開催中` : `${event.label}を開催 $${event.cost}`;
   ui.seasonEventBtn.disabled = !!active || state.money < event.cost;
+  const challenge = active ? state.seasonalEvent.challenge : null;
+  const challengeProgress = seasonalChallengeProgress(challenge);
+  const lastResult = state.seasonalEvent.lastResult?.season === season ? state.seasonalEvent.lastResult : null;
+  const challengeRankKey = challenge ? challengeProgress.rankKey : lastResult?.rankKey || "none";
+  const challengeStatusText = challenge
+    ? `残り${state.seasonalEvent.roundsRemaining}ラウンド`
+    : lastResult
+      ? `前回 ${lastResult.completed}/4達成`
+      : "未開始";
+  const challengeRankText = challenge ? challengeProgress.rank.label : lastResult?.rankLabel || "--";
+  const challengeRows = [
+    ["guests", "イベント来園者", "人"],
+    ["rides", "限定ライド利用", "人"],
+    ["shopSales", `${shopKindLabel(challengeProgress.targets.shopKind)}販売`, "個"],
+    ["synergy", "景観相乗", ""]
+  ];
+  const challengeHtml = challengeRows.map(([key, label, unit]) => {
+    const value = Math.floor(challengeProgress.values[key]);
+    const target = challengeProgress.targets[key];
+    const complete = value >= target;
+    const width = Math.round(clamp(value / Math.max(1, target), 0, 1) * 100);
+    return `<div class="season-challenge-row${complete ? " complete" : ""}"><span>${label}</span><b>${value}${unit} / ${target}${unit}</b><i><em style="width:${width}%"></em></i></div>`;
+  }).join("");
+  const challengeRewardText = challenge
+    ? `現在 $${challengeProgress.rank.reward.toLocaleString()} / 最大 $${SEASON_CHALLENGE_RANKS.gold.reward.toLocaleString()}`
+    : lastResult
+      ? `${lastResult.rankLabel} $${lastResult.reward.toLocaleString()}`
+      : `最大 $${SEASON_CHALLENGE_RANKS.gold.reward.toLocaleString()}`;
+  const challengeSignature = `${season}:${challengeRankKey}:${challengeStatusText}:${challengeRankText}:${challengeRewardText}:${challengeHtml}`;
+  if (challengeSignature !== seasonalChallengeRenderSignature) {
+    ui.seasonChallenge.dataset.rank = challengeRankKey;
+    ui.seasonChallengeStatus.textContent = challengeStatusText;
+    ui.seasonChallengeRank.textContent = challengeRankText;
+    ui.seasonChallengeList.innerHTML = challengeHtml;
+    ui.seasonChallengeReward.textContent = challengeRewardText;
+    seasonalChallengeRenderSignature = challengeSignature;
+  }
   ui.crowdEventStatus.textContent = crowd ? `${crowd.label}・今ラウンド` : "未実施";
   ui.paradeEventBtn.disabled = !!crowd || state.money < CROWD_EVENTS.parade.cost;
   ui.fireworksEventBtn.disabled = !!crowd || state.money < CROWD_EVENTS.fireworks.cost;
   ui.paradeEventBtn.classList.toggle("active", state.seasonalEvent.boostType === "parade" && !!crowd);
   ui.fireworksEventBtn.classList.toggle("active", state.seasonalEvent.boostType === "fireworks" && !!crowd);
-  ui.seasonHint.textContent = active ? event.hint : `開催すると${event.duration}ラウンド有効になり、${tools[event.ride].label}を建設・稼働できます。`;
+  ui.seasonHint.textContent = active
+    ? `${event.hint} ${tools[event.plant].label}を限定ライドの3マス以内に置くと景観相乗が発動します。`
+    : `開催すると${event.duration}ラウンド有効になり、${tools[event.ride].label}と${tools[event.plant].label}を建設できます。`;
 }
 
 function guestNeedRates(guest) {
@@ -2864,8 +3117,9 @@ function update(dt) {
   const transitStops = busStops().length;
   const admissionPressure = Math.max(0, state.admissionFee - 25) * .045;
   const campaignInterval = activeMarketingCampaign()?.interval || 1;
-  const interval = Math.max(.65, seasonalArrivalInterval(dayConditionArrivalInterval((3.6 - attraction / 42 - state.round * .08 - transitStops * .14 + admissionPressure) * campaignInterval)));
-  if (spawnTimer > interval && state.guests.length < 12 + state.round * 5) {
+  const interval = Math.max(.58, seasonalArrivalInterval(dayConditionArrivalInterval((3.6 - attraction / 42 - state.round * .08 - transitStops * .14 + admissionPressure) * campaignInterval)) * difficultyArrivalFactor());
+  const guestCap = Math.max(8, 12 + state.round * 5 + difficultyConfig().guestCapBonus);
+  if (spawnTimer > interval && state.guests.length < guestCap) {
     spawnTimer = 0;
     spawnGuest();
   }
@@ -2947,9 +3201,29 @@ function operatingCostBreakdown() {
 }
 
 function difficultyCostFactor() {
-  const config = DIFFICULTY_CONFIGS[state.difficulty] || DIFFICULTY_CONFIGS.beginner;
+  const config = difficultyConfig();
   const grace = state.round <= config.graceRounds ? config.graceMultiplier : 1;
   return config.costMultiplier * grace;
+}
+
+function difficultyConfig(mode = state.difficulty) {
+  return DIFFICULTY_CONFIGS[mode] || DIFFICULTY_CONFIGS.beginner;
+}
+
+function difficultyRevenue(amount) {
+  return Math.max(0, Math.round(Number(amount || 0) * difficultyConfig().revenueMultiplier));
+}
+
+function difficultyArrivalFactor() {
+  return difficultyConfig().arrivalMultiplier;
+}
+
+function difficultyWearFactor() {
+  return difficultyConfig().wearMultiplier;
+}
+
+function difficultyFailureFactor() {
+  return difficultyConfig().failureMultiplier;
 }
 
 function operatingCost() {
@@ -3131,7 +3405,7 @@ function spawnGuestAt(startTile) {
     state.marketing.remainingLeads = Math.max(0, Number(state.marketing.remainingLeads || 0) - 1);
     if (state.marketing.remainingLeads <= 0) state.marketing.activeCampaign = null;
   }
-  const refusalChance = clamp((state.admissionFee - 20) * .014, 0, .72);
+  const refusalChance = clamp((state.admissionFee - 20) * .014 * difficultyConfig().refusalMultiplier, 0, .82);
   if (Math.random() < refusalChance) {
     if (campaign) state.marketing.refusals = Math.max(0, Number(state.marketing.refusals || 0)) + 1;
     addGuestLog("来園希望", "入園料が高くて今日は見送った", "negative");
@@ -3164,6 +3438,7 @@ function spawnGuestAt(startTile) {
     fatigue: (archetype === "family" ? 24 : 12) + Math.random() * 36,
     restroomNeed: (archetype === "family" ? 32 : 20) + Math.random() * 40,
     satisfaction: clamp((campaignFit === null ? 72 : clamp(66 + (campaignFit - 50) * .24, 54, 82))
+      + difficultyConfig().satisfactionBonus
       + Number(activeSeasonalEvent()?.satisfaction || 0) + Number(activeCrowdEvent()?.satisfaction || 0), 0, 100),
     campaignType,
     thought: null,
@@ -3174,10 +3449,12 @@ function spawnGuestAt(startTile) {
   const goal = guest.goal;
   guest.path = goal ? findPath(startTile, nearestPath(goal)) : [];
   if (!goal) guestThought(guest, "遊べるライドへ行けない", "遊具へ行けない", "negative", true);
-  state.money += state.admissionFee;
-  state.finance.admissionRevenue += state.admissionFee;
+  const admissionRevenue = difficultyRevenue(state.admissionFee);
+  state.money += admissionRevenue;
+  state.finance.admissionRevenue += admissionRevenue;
   state.guests.push(guest);
   if (activeSeasonalEvent() || activeCrowdEvent()) state.seasonalEvent.boostedGuests++;
+  recordSeasonalChallenge("guests");
   startTile.traffic = Number(startTile.traffic || 0) + .5;
   if (campaign) state.marketing.attractedGuests = Math.max(0, Number(state.marketing.attractedGuests || 0)) + 1;
   if (campaignMatch && campaignFit < 50) {
@@ -3224,8 +3501,55 @@ function localSceneryScore(object) {
   if (!origin) return 0;
   return state.tiles.reduce((sum, tile) => {
     const distance = Math.abs(tile.x - origin.x) + Math.abs(tile.y - origin.y);
-    return distance <= 3 ? sum + (tools[tile.object?.type]?.scenery || 0) + (tile.terrain === "water" ? 1 : 0) : sum;
+    return distance <= 3 ? sum + tileSceneryValue(tile) : sum;
   }, 0);
+}
+
+function seasonalPlantTiles() {
+  return state.tiles.filter(tile => !!tools[tile.object?.type]?.seasonalPlant);
+}
+
+function matchingSeasonalPlantsNearRide(ride) {
+  const rideTile = tileForObject(ride);
+  const season = tools[ride?.type]?.limitedSeason;
+  if (!rideTile || !season) return [];
+  return seasonalPlantTiles().filter(tile => tools[tile.object.type].seasonalPlant === season
+    && Math.abs(tile.x - rideTile.x) + Math.abs(tile.y - rideTile.y) <= 3);
+}
+
+function matchingSeasonalRideNearPlant(tile) {
+  const season = tools[tile?.object?.type]?.seasonalPlant;
+  const rideType = SEASONAL_EVENTS[season]?.ride;
+  if (!rideType) return null;
+  return state.rides.find(ride => {
+    const rideTile = tileForObject(ride);
+    return ride.type === rideType && rideTile
+      && Math.abs(tile.x - rideTile.x) + Math.abs(tile.y - rideTile.y) <= 3;
+  }) || null;
+}
+
+function seasonalPlantSynergyForTile(tile) {
+  const tool = tools[tile?.object?.type];
+  const event = activeSeasonalEvent();
+  if (!tool?.seasonalPlant || event?.ride !== SEASONAL_EVENTS[tool.seasonalPlant]?.ride) return 0;
+  return matchingSeasonalRideNearPlant(tile) ? Number(tool.synergy || 0) : 0;
+}
+
+function seasonalRidePlantBonus(ride) {
+  if (!seasonalRideAvailable(ride?.type)) return 0;
+  return matchingSeasonalPlantsNearRide(ride)
+    .reduce((sum, tile) => sum + Number(tools[tile.object.type].synergy || 0), 0);
+}
+
+function seasonalPlantSynergyTotal() {
+  if (!activeSeasonalEvent()) return 0;
+  return seasonalPlantTiles().reduce((sum, tile) => sum + seasonalPlantSynergyForTile(tile), 0);
+}
+
+function tileSceneryValue(tile) {
+  return Number(tools[tile?.object?.type]?.scenery || 0)
+    + seasonalPlantSynergyForTile(tile)
+    + (tile?.terrain === "water" ? 1 : 0);
 }
 
 function shopKind(shop) {
@@ -3710,7 +4034,8 @@ function buyFromShop(guest, shop) {
   shop.stock--;
   shop.sales = Number(shop.sales || 0) + 1;
   shop.recentSales = Number(shop.recentSales || 0) + 1;
-  shop.revenue = Number(shop.revenue || 0) + price;
+  const shopRevenue = difficultyRevenue(price);
+  shop.revenue = Number(shop.revenue || 0) + shopRevenue;
   guest.purchases ||= { food: !!guest.spent, drink: false, souvenir: false };
   guest.purchases[kind] = true;
   if (kind === "food") guest.spent = true;
@@ -3719,8 +4044,9 @@ function buyFromShop(guest, shop) {
   if (kind === "drink") guest.thirst = Math.max(5, Number(guest.thirst || 0) - 66);
   else if (kind === "souvenir") guest.souvenirDesire = Math.max(0, Number(guest.souvenirDesire || 0) - 82);
   else guest.hunger = Math.max(8, Number(guest.hunger || 0) - 58);
-  state.money += price;
-  state.finance.shopRevenue += price;
+  state.money += shopRevenue;
+  state.finance.shopRevenue += shopRevenue;
+  recordSeasonalChallenge("shopSales", 1, kind);
   const qualityBonus = (Number(shop.level || 1) - 1) * .12 + (Number(shop.staff || 1) - 1) * .06;
   const value = clamp(.35 + qualityBonus - Math.max(0, price - tools[shop.type].defaultPrice) * .06, -.25, .65);
   shop.reputation = clamp(Number(shop.reputation ?? SHOP_MANAGEMENT_CONFIG.startingReputation) + (value >= 0 ? .6 + qualityBonus : -.35), 0, 100);
@@ -3761,10 +4087,10 @@ function updateRide(ride, dt) {
   if (ride.open === false && !ride.riders.length) return;
   const policy = ridePolicy(ride);
   const debtPenalty = state.money < 0 ? 1.8 : 1;
-  const wear = (.04 + (tools[ride.type].upkeep || 10) * .0015) * debtPenalty * policy.wear;
+  const wear = (.04 + (tools[ride.type].upkeep || 10) * .0015) * debtPenalty * policy.wear * difficultyWearFactor();
   const underMaintenance = state.staffAgents.some(agent => agent.role === "mechanic" && agent.target?.object === ride);
   ride.condition = clamp(ride.condition - dt * wear / (underMaintenance ? 1.8 : 1), 0, 100);
-  const failureRisk = ride.condition < 45 ? (45 - ride.condition) * .00075 * policy.failure : 0;
+  const failureRisk = ride.condition < 45 ? (45 - ride.condition) * .00075 * policy.failure * difficultyFailureFactor() : 0;
   if (ride.condition <= 10 || Math.random() < dt * failureRisk) {
     ride.broken = true;
     ride.popularity = clamp(Number(ride.popularity ?? RIDE_MANAGEMENT_CONFIG.startingPopularity) - 5, 0, 100);
@@ -3786,6 +4112,7 @@ function updateRide(ride, dt) {
   }
   ride.timer -= dt;
   if (ride.timer <= 0 && ride.riders.length) {
+    const completedRiderCount = ride.riders.length;
     const rideTile = tileForObject(ride);
     for (const guest of ride.riders) {
       guest.state = "walking";
@@ -3831,7 +4158,8 @@ function updateRide(ride, dt) {
     }
     ride.riders = [];
     ride.totalRides++;
-    ride.condition = clamp(ride.condition - .7 - tools[ride.type].upkeep * .018, 0, 100);
+    recordSeasonalChallenge("rides", completedRiderCount, ride.type);
+    ride.condition = clamp(ride.condition - (.7 + tools[ride.type].upkeep * .018) * difficultyWearFactor(), 0, 100);
   }
   if (ride.open !== false && seasonalRideAvailable(ride.type) && !ride.riders.length && ride.queue.length) {
     const cap = rideCapacity(ride);
@@ -3843,8 +4171,9 @@ function updateRide(ride, dt) {
       guest.pos = { x: rideTile.x, y: rideTile.y };
       const price = Number(ride.price ?? tools[ride.type].defaultPrice);
       guest.budget = Math.max(0, Number(guest.budget ?? 50) - price);
-      state.money += price;
-      state.finance.rideRevenue += price;
+      const rideRevenue = difficultyRevenue(price);
+      state.money += rideRevenue;
+      state.finance.rideRevenue += rideRevenue;
     }
     ride.timer = rideDuration(ride);
   }
@@ -4014,7 +4343,10 @@ function getBusRoute() {
 }
 
 function sceneryScore() {
-  return state.tiles.reduce((sum, t) => sum + (tools[t.object?.type]?.scenery || 0) + (t.terrain === "water" ? 1 : 0), 0);
+  const base = state.tiles.reduce((sum, tile) => sum
+    + Number(tools[tile.object?.type]?.scenery || 0)
+    + (tile.terrain === "water" ? 1 : 0), 0);
+  return base + seasonalPlantSynergyTotal();
 }
 
 function snapshotObject(object) {
@@ -4425,17 +4757,51 @@ function loadGame() {
       refusals: Math.max(0, Number(save.marketing?.refusals) || 0),
       campaignsStarted: Math.max(0, Number(save.marketing?.campaignsStarted) || 0)
     };
-    const savedSeason = SEASONAL_EVENTS[save.seasonalEvent?.activeSeason] && save.seasonalEvent.activeSeason === seasonForRound()
+    const savedSeasonCandidate = SEASONAL_EVENTS[save.seasonalEvent?.activeSeason] && save.seasonalEvent.activeSeason === seasonForRound()
       ? save.seasonalEvent.activeSeason
       : null;
+    const savedSeasonRounds = savedSeasonCandidate ? Math.max(0, Number(save.seasonalEvent?.roundsRemaining) || 0) : 0;
+    const savedSeason = savedSeasonRounds > 0 ? savedSeasonCandidate : null;
     const savedBoost = CROWD_EVENTS[save.seasonalEvent?.boostType] ? save.seasonalEvent.boostType : null;
+    const savedChallenge = savedSeason
+      ? save.seasonalEvent?.challenge?.season === savedSeason
+        ? {
+            season: savedSeason,
+            startedRound: Math.max(1, Number(save.seasonalEvent.challenge.startedRound) || state.round),
+            plannedRounds: clamp(Number(save.seasonalEvent.challenge.plannedRounds) || 1, 1, SEASONAL_EVENTS[savedSeason].duration),
+            guests: Math.max(0, Number(save.seasonalEvent.challenge.guests) || 0),
+            rides: Math.max(0, Number(save.seasonalEvent.challenge.rides) || 0),
+            shopSales: Math.max(0, Number(save.seasonalEvent.challenge.shopSales) || 0)
+          }
+        : {
+            season: savedSeason,
+            startedRound: state.round,
+            plannedRounds: clamp(savedSeasonRounds, 1, SEASONAL_EVENTS[savedSeason].duration),
+            guests: 0,
+            rides: 0,
+            shopSales: 0
+          }
+      : null;
+    const savedBestRanks = Object.fromEntries(Object.entries(save.seasonalEvent?.bestRanks || {})
+      .filter(([season, rank]) => SEASONAL_EVENTS[season] && SEASON_CHALLENGE_RANKS[rank]));
+    const savedChallengeHistory = Array.isArray(save.seasonalEvent?.challengeHistory)
+      ? save.seasonalEvent.challengeHistory.filter(result => SEASONAL_EVENTS[result?.season] && SEASON_CHALLENGE_RANKS[result?.rankKey]).slice(0, 8)
+      : [];
+    const savedLastResult = SEASONAL_EVENTS[save.seasonalEvent?.lastResult?.season]
+      && SEASON_CHALLENGE_RANKS[save.seasonalEvent?.lastResult?.rankKey]
+      ? save.seasonalEvent.lastResult
+      : savedChallengeHistory[0] || null;
     state.seasonalEvent = {
       activeSeason: savedSeason,
-      roundsRemaining: savedSeason ? Math.max(0, Number(save.seasonalEvent?.roundsRemaining) || 0) : 0,
+      roundsRemaining: savedSeasonRounds,
       boostType: savedBoost,
       boostRoundsRemaining: savedBoost ? Math.max(0, Number(save.seasonalEvent?.boostRoundsRemaining) || 0) : 0,
       eventsHosted: Math.max(0, Number(save.seasonalEvent?.eventsHosted) || 0),
-      boostedGuests: Math.max(0, Number(save.seasonalEvent?.boostedGuests) || 0)
+      boostedGuests: Math.max(0, Number(save.seasonalEvent?.boostedGuests) || 0),
+      challenge: savedChallenge,
+      bestRanks: savedBestRanks,
+      lastResult: savedLastResult,
+      challengeHistory: savedChallengeHistory
     };
     state.guestLog = Array.isArray(save.guestLog)
       ? save.guestLog.slice(0, 6).map(entry => ({
@@ -4630,16 +4996,23 @@ function computeStats() {
   ui.expenseTotal.textContent = `$${Math.round(expenses).toLocaleString()}`;
   ui.netTotal.textContent = `${net >= 0 ? "+" : "-"}$${Math.abs(Math.round(net)).toLocaleString()}`;
   ui.netTotal.classList.toggle("negative", net < 0);
-  const difficulty = DIFFICULTY_CONFIGS[state.difficulty] || DIFFICULTY_CONFIGS.beginner;
+  const difficulty = difficultyConfig();
   const costFactor = difficultyCostFactor();
-  const costReduction = Math.round((1 - costFactor) * 100);
+  const costDelta = Math.round((costFactor - 1) * 100);
+  const revenueDelta = Math.round((difficulty.revenueMultiplier - 1) * 100);
+  const costText = costDelta < 0 ? `運営費 ${Math.abs(costDelta)}%軽減` : costDelta > 0 ? `運営費 +${costDelta}%` : "運営費 基準";
+  const revenueText = revenueDelta > 0 ? `売上 +${revenueDelta}%` : revenueDelta < 0 ? `売上 ${revenueDelta}%` : "売上 基準";
   ui.difficultyLabel.textContent = difficulty.label;
-  ui.subsidyStatus.textContent = costReduction > 0 ? `運営費 ${costReduction}%軽減` : "補助なし";
-  ui.subsidyStatus.style.color = costReduction > 0 ? "var(--green)" : "var(--muted)";
+  ui.subsidyStatus.textContent = `${costText}・${revenueText}`;
+  ui.subsidyStatus.style.color = state.difficulty === "beginner" ? "var(--green)" : state.difficulty === "challenge" ? "var(--coral)" : "var(--muted)";
   const currentCost = operatingCost();
   let financeHint = state.round <= difficulty.graceRounds
-    ? `序盤補助中です。建て急がず、収入が支出を上回るか観察しましょう。`
-    : "収支は安定しています。需要を見ながら少しずつ拡張しましょう。";
+    ? `${difficulty.label}の序盤補助中です。現在は${costText}、${revenueText}です。`
+    : state.difficulty === "beginner"
+      ? "初級の収益補助が有効です。需要を見ながら安心して少しずつ拡張しましょう。"
+      : state.difficulty === "challenge"
+        ? "上級は売上が低く運営費も高めです。稼働率の低い設備を増やしすぎないようにしましょう。"
+        : "普通は補正なしの標準収支です。需要を見ながら少しずつ拡張しましょう。";
   let financeWarning = false;
   if (state.money < currentCost * 5) {
     financeHint = "資金が少なくなっています。新規建設を止め、不要なスタッフや交通費を見直しましょう。";
@@ -5197,10 +5570,12 @@ function inspect(tile) {
       const popularity = Math.round(Number(tile.object.popularity ?? RIDE_MANAGEMENT_CONFIG.startingPopularity));
       const upgradeCost = rideUpgradeCost(tile.object);
       const seasonal = SEASONAL_EVENTS[t.limitedSeason];
+      const plantBonus = seasonalRidePlantBonus(tile.object);
+      const nearbySeasonalPlants = matchingSeasonalPlantsNearRide(tile.object).length;
       const status = tile.object.broken ? "故障中" : !seasonalRideAvailable(tile.object.type) ? "シーズン休止中" : tile.object.open === false ? "運休中" : "営業中";
       const waitLabel = tile.object.broken || tile.object.open === false || !seasonalRideAvailable(tile.object.type) ? "--" : `${wait}秒`;
-      body = `${status}。状態 ${Math.round(tile.object.condition ?? 100)}%、待ち列 ${tile.object.queue.length}人・推定${waitLabel}、乗車中 ${tile.object.riders.length}/${capacity}人、運転回数 ${tile.object.totalRides}回。${seasonal ? ` ${seasonal.seasonLabel}の${seasonal.label}開催中のみ稼働します。` : ""}`;
-      controls = `<div class="ride-management-grid"><span>レベル<b>Lv.${level}</b></span><span>人気<b>${popularity}</b></span><span>維持費 / 精算<b>$${upkeep}</b></span><span>定員<b>${capacity}人</b></span><span>運転時間<b>${duration.toFixed(1)}秒</b></span><span>整備開始<b>${rideMaintenanceThreshold(tile.object)}%</b></span></div><div class="inline-economy"><span>乗車料金</span><div class="stepper"><button data-action="ride-price-down" title="乗車料金を下げる">−</button><b>$${tile.object.price}</b><button data-action="ride-price-up" title="乗車料金を上げる">＋</button></div></div><span class="ride-policy-label">整備方針</span><div class="ride-policy-control">${Object.entries(RIDE_MANAGEMENT_CONFIG.policies).map(([key, policy]) => `<button class="${tile.object.maintenancePolicy === key ? "active" : ""}" data-action="ride-policy" data-policy="${key}">${policy.label}</button>`).join("")}</div><div class="ride-development-actions"><button class="${tile.object.open !== false ? "active" : ""}" data-action="ride-open-toggle">${tile.object.open === false ? "営業を再開" : "運休する"}</button><button data-action="ride-upgrade" ${upgradeCost <= 0 || tile.object.broken ? "disabled" : ""}>${upgradeCost > 0 ? `Lv.${level + 1}改良 $${upgradeCost}` : "改良完了"}</button></div>`;
+      body = `${status}。状態 ${Math.round(tile.object.condition ?? 100)}%、待ち列 ${tile.object.queue.length}人・推定${waitLabel}、乗車中 ${tile.object.riders.length}/${capacity}人、運転回数 ${tile.object.totalRides}回。${seasonal ? ` ${seasonal.seasonLabel}の${seasonal.label}開催中のみ稼働します。周辺の限定植物 ${nearbySeasonalPlants}本。` : ""}`;
+      controls = `<div class="ride-management-grid"><span>レベル<b>Lv.${level}</b></span><span>人気<b>${popularity}</b></span><span>維持費 / 精算<b>$${upkeep}</b></span><span>定員<b>${capacity}人</b></span><span>運転時間<b>${duration.toFixed(1)}秒</b></span><span>整備開始<b>${rideMaintenanceThreshold(tile.object)}%</b></span>${seasonal ? `<span>景観相乗<b>+${plantBonus}</b></span>` : ""}</div><div class="inline-economy"><span>乗車料金</span><div class="stepper"><button data-action="ride-price-down" title="乗車料金を下げる">−</button><b>$${tile.object.price}</b><button data-action="ride-price-up" title="乗車料金を上げる">＋</button></div></div><span class="ride-policy-label">整備方針</span><div class="ride-policy-control">${Object.entries(RIDE_MANAGEMENT_CONFIG.policies).map(([key, policy]) => `<button class="${tile.object.maintenancePolicy === key ? "active" : ""}" data-action="ride-policy" data-policy="${key}">${policy.label}</button>`).join("")}</div><div class="ride-development-actions"><button class="${tile.object.open !== false ? "active" : ""}" data-action="ride-open-toggle">${tile.object.open === false ? "営業を再開" : "運休する"}</button><button data-action="ride-upgrade" ${upgradeCost <= 0 || tile.object.broken ? "disabled" : ""}>${upgradeCost > 0 ? `Lv.${level + 1}改良 $${upgradeCost}` : "改良完了"}</button></div>`;
     }
     else if (t.transit) {
       const stop = tile.object;
@@ -5250,6 +5625,14 @@ function inspect(tile) {
       const fill = Number(tile.object.fill || 0);
       const maxFill = Number(tile.object.maxFill || tools.trash_bin.maxFill);
       body = `容量 ${Math.round(fill)}/${maxFill}、累計回収 ${Math.floor(tile.object.collected || 0)}。3マス以内で発生したごみを受け止め、清掃員が空にします。`;
+    }
+    else if (t.seasonalPlant) {
+      const event = SEASONAL_EVENTS[t.seasonalPlant];
+      const nearbyRide = matchingSeasonalRideNearPlant(tile);
+      const synergy = seasonalPlantSynergyForTile(tile);
+      const placement = nearbyRide ? `${tools[nearbyRide.type].label}の3マス以内` : `近くに${tools[event.ride].label}がありません`;
+      const synergyStatus = synergy > 0 ? `相乗効果が発動中で景観 +${synergy}` : nearbyRide ? `次の${event.label}で相乗 +${t.synergy}` : `限定ライドの周辺配置で相乗 +${t.synergy}`;
+      body = `${event.seasonLabel}限定の植物。基本景観 +${t.scenery}。${placement}。${synergyStatus}。設置後は季節が変わっても残ります。`;
     }
     else body = `景観値 ${t.scenery}。満足度を少し上げ、清潔さの悪化をやわらげます。`;
   }
@@ -5467,7 +5850,7 @@ applyHeroSelection(selectedHero, true);
 const TUTORIAL_STEPS = [
   {
     title: "ようこそ、園長さん",
-    body: `<p>まず難易度を選びます。初めてなら <strong>「はじめて」</strong> がおすすめです。初期資金が多く、最初の2ラウンドは運営費が大きく軽減されます。</p><p class="tutorial-tip">難易度を変えても、ゲームの機能やアンロック内容は同じです。</p>`
+    body: `<p>まず難易度を選びます。初めてなら <strong>「初級」</strong> がおすすめです。初期資金と売上が多く、最初の4ラウンドは運営費も大きく軽減されます。</p><p class="tutorial-tip">普通は補正なしの基準、上級は収入・集客・故障管理が厳しくなります。機能やアンロック内容は同じです。</p>`
   },
   {
     title: "最初は建てすぎない",
@@ -5958,6 +6341,7 @@ function showRoundReport(report) {
   const achievements = [
     `<p class="condition-note">${DAY_CONDITIONS[report.condition]?.label || "晴れ"}の営業を終了。新ラウンドは${currentDayCondition().label}、次回予報は${DAY_CONDITIONS[state.dayCondition.next].label}です。</p>`,
     ...(report.seasonalEvent ? [`<p class="season-note">${report.seasonalEvent}を開催し、イベント来園者は累計${report.boostedGuests}人になりました。</p>`] : []),
+    ...(report.seasonalResult ? [`<p class="season-result ${report.seasonalResult.rankKey}">イベント結果: ${report.seasonalResult.rankLabel}（${report.seasonalResult.completed}/4達成）　+$${report.seasonalResult.reward.toLocaleString()}</p>`] : []),
     ...(report.crowdEvent ? [`<p class="season-note">集客イベント「${report.crowdEvent}」が終了しました。</p>`] : []),
     ...report.completedGoals.map(status => `<p>目標達成: ${status.goal.label}　+$${status.goal.reward.toLocaleString()}</p>`),
     ...report.newUnlocks.map(label => `<p>新解禁: ${label}</p>`)
@@ -6009,10 +6393,14 @@ function settleRound() {
   };
   state.money += goalReward + ratingBonus;
   advanceGoals(completedGoals);
+  state.round++;
+  const seasonalResult = advanceSeasonalEvents();
+  if (seasonalResult) {
+    seasonalResult.round = report.round;
+    report.seasonalResult = seasonalResult;
+  }
   state.progression.reports.unshift(report);
   state.progression.reports = state.progression.reports.slice(0, 8);
-  state.round++;
-  advanceSeasonalEvents();
   state.day++;
   state.dayCondition.current = state.dayCondition.next;
   state.dayCondition.next = rollDayCondition(state.dayCondition.current);
@@ -6213,6 +6601,12 @@ window.parkDebug = {
       eventsHosted: state.seasonalEvent.eventsHosted,
       boostedGuests: state.seasonalEvent.boostedGuests,
       seasonalRides: state.rides.filter(ride => !!tools[ride.type]?.limitedSeason).length,
+      seasonalPlants: seasonalPlantTiles().length,
+      seasonalPlantSynergy: seasonalPlantSynergyTotal(),
+      seasonalChallenge: state.seasonalEvent.challenge ? { ...state.seasonalEvent.challenge } : null,
+      seasonalChallengeRank: seasonalChallengeProgress(state.seasonalEvent.challenge).rankKey,
+      seasonalBestRanks: { ...(state.seasonalEvent.bestRanks || {}) },
+      seasonalLastResult: state.seasonalEvent.lastResult ? { ...state.seasonalEvent.lastResult } : null,
       selectedTool,
       analysisMode,
       busiestTraffic: Number(Math.max(0, ...state.tiles.map(tile => Number(tile.traffic || 0))).toFixed(1)),
@@ -6298,6 +6692,19 @@ window.parkDebug = {
   activeCrowdEvent,
   seasonalRideAvailable,
   seasonalArrivalInterval,
+  seasonalChallengeDifficultyFactor,
+  seasonalChallengeTargets,
+  seasonalChallengeSynergy,
+  seasonalChallengeProgress,
+  recordSeasonalChallenge,
+  finishSeasonalChallenge,
+  seasonalPlantTiles,
+  matchingSeasonalPlantsNearRide,
+  matchingSeasonalRideNearPlant,
+  seasonalPlantSynergyForTile,
+  seasonalRidePlantBonus,
+  seasonalPlantSynergyTotal,
+  tileSceneryValue,
   startSeasonalEvent,
   startCrowdEvent,
   advanceSeasonalEvents,
@@ -6385,7 +6792,12 @@ window.parkDebug = {
   drawWorld,
   update,
   operatingCostBreakdown,
+  difficultyConfig,
   difficultyCostFactor,
+  difficultyRevenue,
+  difficultyArrivalFactor,
+  difficultyWearFactor,
+  difficultyFailureFactor,
   setDifficulty,
   openTutorial,
   closeTutorial,

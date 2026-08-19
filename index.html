@@ -97,6 +97,10 @@
           <button data-tool="shrub" title="低木を置く">$80<span>低木</span></button>
           <button data-tool="flower" title="花壇を置く">$100<span>花壇</span></button>
           <button data-tool="palm" title="ヤシを植える">$180<span>ヤシ</span></button>
+          <button data-tool="cherry_tree" title="春・桜フェス限定">$300<span>桜の木</span></button>
+          <button data-tool="sunflower_garden" title="夏・サマースプラッシュ限定">$260<span>ひまわり</span></button>
+          <button data-tool="maple_tree" title="秋・ハーベストカーニバル限定">$320<span>楓の木</span></button>
+          <button data-tool="christmas_tree" title="冬・スノーライトフェス限定">$380<span>クリスマスツリー</span></button>
         </div>
       </div>
 
@@ -155,8 +159,17 @@
           <span>来園<b id="seasonArrival">+18%</b></span>
           <span>売店<b id="seasonDemand">土産 +</b></span>
           <span>限定遊具<b id="seasonRide">桜スイング</b></span>
+          <span>限定植物<b id="seasonPlant">桜の木</b></span>
         </div>
         <button id="seasonEventBtn" class="season-event-button" type="button">桜フェスを開催 $700</button>
+        <div id="seasonChallenge" class="season-challenge" data-rank="none">
+          <div class="season-challenge-heading">
+            <span><b>イベントチャレンジ</b><small id="seasonChallengeStatus">未開始</small></span>
+            <strong id="seasonChallengeRank">--</strong>
+          </div>
+          <div id="seasonChallengeList" class="season-challenge-list"></div>
+          <div class="season-challenge-reward"><span>成功報奨</span><b id="seasonChallengeReward">最大 $1,600</b></div>
+        </div>
         <div class="crowd-event-heading"><b>集客UPイベント</b><small id="crowdEventStatus">未実施</small></div>
         <div class="crowd-event-options">
           <button id="paradeEventBtn" type="button"><b>ミニパレード</b><small>来園 +14%・$500</small></button>
@@ -310,8 +323,8 @@
           <button id="shopPricingAction" disabled>高値店を確認</button>
         </div>
         <div class="difficulty-status">
-          <span id="difficultyLabel">はじめて</span>
-          <b id="subsidyStatus">序盤補助 50%</b>
+          <span id="difficultyLabel">初級</span>
+          <b id="subsidyStatus">運営費 66%軽減・売上 +25%</b>
         </div>
         <p id="financeHint" class="finance-hint">まずは既存設備のままゲストの動きを観察しましょう。</p>
       </section>
@@ -433,9 +446,9 @@
         <div class="tutorial-progress" aria-hidden="true"><i id="tutorialProgress"></i></div>
         <div id="tutorialBody" class="tutorial-body"></div>
         <div id="difficultyPicker" class="difficulty-picker" aria-label="難易度選択">
-          <button data-difficulty="beginner" class="active"><b>はじめて</b><small>$30,000・序盤補助</small></button>
-          <button data-difficulty="standard"><b>標準</b><small>$24,000・軽い補助</small></button>
-          <button data-difficulty="challenge"><b>挑戦</b><small>$18,000・補助なし</small></button>
+          <button data-difficulty="beginner" class="active"><b>初級</b><small>$36,000<br>売上+25%・運営費-38%<br>4ラウンド強力補助<br>来園増・故障しにくい</small></button>
+          <button data-difficulty="standard"><b>普通</b><small>$24,000<br>売上・通常運営費は基準<br>初回だけ運営費-15%<br>標準バランス</small></button>
+          <button data-difficulty="challenge"><b>上級</b><small>$16,000<br>売上-10%・運営費+25%<br>来園減・故障しやすい</small></button>
         </div>
         <div class="tutorial-actions">
           <button id="tutorialBackBtn">戻る</button>

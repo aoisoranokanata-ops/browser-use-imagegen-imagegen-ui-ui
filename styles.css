@@ -609,6 +609,10 @@ button.active { background: #26313f; color: #fff8df; }
 .report-achievements p.neutral { background: rgba(38, 49, 63, .05); border-left-color: var(--muted); }
 .report-achievements p.condition-note { background: rgba(73, 171, 194, .1); border-left-color: var(--teal); }
 .report-achievements p.season-note { background: rgba(121, 109, 192, .1); border-left-color: #796dc0; }
+.report-achievements p.season-result { background: rgba(241, 184, 79, .12); border-left-color: var(--gold); font-weight: 900; }
+.report-achievements p.season-result.bronze { border-left-color: #a76734; }
+.report-achievements p.season-result.silver { border-left-color: #647887; }
+.report-achievements p.season-result.gold { border-left-color: #b98218; }
 .round-report-dialog > .primary { margin: 0; }
 
 .zoom-controls {
@@ -733,7 +737,7 @@ h1 { margin: 0; font-size: 21px; }
 
 .season-effects {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
   margin-top: 6px;
 }
@@ -754,6 +758,47 @@ h1 { margin: 0; font-size: 21px; }
 .season-panel[data-season="autumn"] .season-event-button { background: rgba(216, 138, 50, .13); }
 .season-panel[data-season="winter"] .season-event-button { background: rgba(121, 109, 192, .13); }
 .season-event-button:disabled { opacity: .62; cursor: default; }
+
+.season-challenge {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(38, 49, 63, .09);
+}
+
+.season-challenge-heading,
+.season-challenge-heading > span,
+.season-challenge-reward {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.season-challenge-heading > span { align-items: flex-start; flex-direction: column; gap: 1px; }
+.season-challenge-heading b { font-size: 9px; }
+.season-challenge-heading small { color: var(--muted); font-size: 7px; }
+.season-challenge-heading > strong { color: var(--muted); font-size: 10px; }
+.season-challenge[data-rank="bronze"] .season-challenge-heading > strong { color: #a76734; }
+.season-challenge[data-rank="silver"] .season-challenge-heading > strong { color: #647887; }
+.season-challenge[data-rank="gold"] .season-challenge-heading > strong { color: #b98218; }
+
+.season-challenge-list { display: grid; gap: 4px; margin-top: 6px; }
+.season-challenge-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 7px;
+  align-items: center;
+}
+.season-challenge-row span { min-width: 0; color: var(--muted); font-size: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.season-challenge-row b { font-size: 7px; }
+.season-challenge-row.complete b { color: var(--green); }
+.season-challenge-row > i { grid-column: 1 / -1; height: 3px; overflow: hidden; border-radius: 2px; background: rgba(38, 49, 63, .1); }
+.season-challenge-row > i em { display: block; height: 100%; background: var(--teal); }
+.season-challenge-row.complete > i em { background: var(--green); }
+
+.season-challenge-reward { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(38, 49, 63, .07); }
+.season-challenge-reward span { color: var(--muted); font-size: 7px; }
+.season-challenge-reward b { font-size: 8px; text-align: right; }
 
 .crowd-event-heading { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(38, 49, 63, .09); }
 .crowd-event-heading b { font-size: 9px; }
@@ -1271,7 +1316,7 @@ h1 { margin: 0; font-size: 21px; }
   font-weight: 900;
 }
 
-.difficulty-status b { color: var(--green); }
+.difficulty-status b { max-width: 150px; color: var(--green); font-size: 8px; line-height: 1.35; text-align: right; }
 .finance-hint {
   margin: 7px 0 0;
   padding: 7px 8px;
@@ -1651,10 +1696,10 @@ details img {
 .tutorial-tip { padding: 9px 11px; background: rgba(241, 184, 79, .12); border-left: 3px solid var(--gold); border-radius: 4px; }
 .difficulty-picker { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin: 12px 0; }
 .difficulty-picker[hidden] { display: none; }
-.difficulty-picker button { min-width: 0; min-height: 66px; padding: 8px 5px; }
+.difficulty-picker button { min-width: 0; min-height: 88px; padding: 8px 5px; }
 .difficulty-picker b, .difficulty-picker small { display: block; }
 .difficulty-picker b { font-size: 12px; }
-.difficulty-picker small { margin-top: 3px; color: inherit; font-size: 8px; font-weight: 700; }
+.difficulty-picker small { margin-top: 4px; color: inherit; font-size: 8px; font-weight: 700; line-height: 1.45; }
 .difficulty-picker button.active { background: var(--teal); color: white; border-color: transparent; }
 .tutorial-actions { display: grid; grid-template-columns: 88px 1fr 110px; gap: 8px; margin-top: 16px; }
 .tutorial-actions button { min-height: 40px; }
