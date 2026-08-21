@@ -108,6 +108,11 @@ const ui = {
   reportRound: document.getElementById("reportRound"),
   reportStars: document.getElementById("reportStars"),
   reportSummary: document.getElementById("reportSummary"),
+  reportDiagnosis: document.getElementById("reportDiagnosis"),
+  reportDiagnosisLabel: document.getElementById("reportDiagnosisLabel"),
+  reportTrend: document.getElementById("reportTrend"),
+  reportBreakdown: document.getElementById("reportBreakdown"),
+  reportActions: document.getElementById("reportActions"),
   reportAchievements: document.getElementById("reportAchievements"),
   closeReportBtn: document.getElementById("closeReportBtn"),
   continueReportBtn: document.getElementById("continueReportBtn"),
@@ -6328,6 +6333,95 @@ function advanceGoals(completedStatuses) {
   }
 }
 
+function roundReportOperationalSnapshot(metrics = getManagementMetrics()) {
+  const shops = shopTiles().map(tile => tile.object);
+  return {
+    brokenRides: state.rides.filter(ride => ride.broken).length,
+    soldOutShops: shops.filter(shop => shop.open !== false && Number(shop.stock || 0) <= 0).length,
+    priceRejects: Math.round(shops.reduce((sum, shop) => sum + Number(shop.recentPriceRejects || 0), 0)),
+    queue: state.rides.reduce((sum, ride) => sum + ride.queue.length, 0),
+    operatingCost: operatingCost(),
+    roundGuests: Number(metrics.roundGuests || 0),
+    clean: Math.round(state.clean),
+    happy: Math.round(state.happy)
+  };
+}
+
+function roundReportDiagnosis(report, previousReport = null) {
+  const finance = report.finance || {};
+  const operations = report.operations || {};
+  const revenueSources = [
+    ["入園料", Number(finance.admissionRevenue || 0)],
+    ["ライド", Number(finance.rideRevenue || 0)],
+    ["売店", Number(finance.shopRevenue || 0)]
+  ].sort((a, b) => b[1] - a[1]);
+  const expenseSources = [
+    ["維持・交通", Number(finance.maintenanceExpenses || 0)],
+    ["スタッフ", Number(finance.staffExpenses || 0)],
+    ["仕入れ", Number(finance.restockExpenses || 0)],
+    ["広告", Number(finance.marketingExpenses || 0)],
+    ["イベント", Number(finance.eventExpenses || 0)]
+  ].sort((a, b) => b[1] - a[1]);
+  const revenueLeader = revenueSources[0];
+  const expenseLeader = expenseSources[0];
+  const margin = report.revenue > 0 ? Math.round(report.net / report.revenue * 100) : report.net >= 0 ? 0 : -100;
+  const status = report.net >= Math.max(500, report.expenses * .25) && Number(report.rating?.stars || 0) >= 3
+    ? "excellent"
+    : report.net >= 0
+      ? "stable"
+      : "warning";
+  const verdict = status === "excellent" ? "好調" : status === "stable" ? "安定" : "要改善";
+  const trendDelta = previousReport ? Math.round(report.net - Number(previousReport.net || 0)) : null;
+  const trend = trendDelta === null
+    ? "前回比 --"
+    : `前回比 ${trendDelta >= 0 ? "+" : "-"}$${Math.abs(trendDelta).toLocaleString()}`;
+  const actions = [];
+  if (report.net < 0) {
+    actions.push(`あと$${Math.ceil(Math.abs(report.net)).toLocaleString()}の売上で収支が均衡します。追加建設を一度止めて回収しましょう。`);
+  }
+  if (Number(operations.brokenRides || 0) > 0) {
+    actions.push(`故障中のライドが${operations.brokenRides}基あります。整備員の増員か予防整備を優先しましょう。`);
+  }
+  if (Number(operations.soldOutShops || 0) > 0) {
+    actions.push(`売り切れの売店が${operations.soldOutShops}店あります。自動発注と在庫容量を見直しましょう。`);
+  }
+  if (Number(operations.priceRejects || 0) > 0) {
+    actions.push(`商品価格による離脱が${operations.priceRejects}件あります。価格診断の推奨額へ近づけましょう。`);
+  }
+  if (Number(operations.clean ?? 100) < 70) {
+    actions.push(`清潔さが${operations.clean}%です。ごみ箱と清掃員の担当範囲を確認しましょう。`);
+  }
+  if (Number(operations.happy ?? 100) < 70) {
+    actions.push(`満足度が${operations.happy}%です。感想ログから料金・行列・休憩設備を確認しましょう。`);
+  }
+  if (Number(finance.staffExpenses || 0) > report.revenue * .45 && Number(finance.staffExpenses || 0) >= Number(finance.maintenanceExpenses || 0)) {
+    actions.push("スタッフ費用の比率が高めです。待機の多い職種や売店人数を調整しましょう。");
+  }
+  if (Number(finance.maintenanceExpenses || 0) > report.revenue * .55) {
+    actions.push("維持・交通費の比率が高めです。利用の少ない設備は休業し、車両数も見直しましょう。");
+  }
+  if (Number(operations.roundGuests || 0) < 5 && report.revenue < report.expenses) {
+    actions.push("来園者が少なめです。入園料を$20〜30へ調整し、需要に合う集客施策を使いましょう。");
+  }
+  if (!actions.length) {
+    const budget = Math.max(200, Math.round(report.net * .5 / 50) * 50);
+    actions.push(`黒字の約半分、$${budget.toLocaleString()}までを次の設備・景観投資の目安にできます。`);
+    actions.push("現在の料金とスタッフ数は安定しています。需要が伸びた場所から拡張しましょう。");
+  }
+  if (report.difficulty === "beginner" && report.net < 0 && actions.length < 3) {
+    actions.push("初級の補助期間中に収支を戻すと、その後も余裕を持って成長できます。");
+  }
+  return {
+    status,
+    verdict,
+    trend,
+    margin,
+    revenueLeader: { label: revenueLeader[0], value: revenueLeader[1] },
+    expenseLeader: { label: expenseLeader[0], value: expenseLeader[1] },
+    actions: actions.slice(0, 3)
+  };
+}
+
 function showRoundReport(report) {
   ui.reportRound.textContent = `ROUND ${report.round}`;
   ui.reportStars.textContent = starText(report.rating.stars);
@@ -6338,6 +6432,15 @@ function showRoundReport(report) {
     <span>評価<b>${Math.round(report.rating.score)}点</b></span>
     <span>目標報酬<b>$${report.goalReward.toLocaleString()}</b></span>
     <span>評価報奨<b>$${report.ratingBonus.toLocaleString()}</b></span>`;
+  const diagnosis = report.diagnosis || roundReportDiagnosis(report);
+  ui.reportDiagnosis.dataset.status = diagnosis.status;
+  ui.reportDiagnosisLabel.textContent = `経営診断・${diagnosis.verdict}`;
+  ui.reportTrend.textContent = diagnosis.trend;
+  ui.reportBreakdown.innerHTML = `
+    <span>最大の収入<b>${diagnosis.revenueLeader.label} $${Math.round(diagnosis.revenueLeader.value).toLocaleString()}</b></span>
+    <span>最大の支出<b>${diagnosis.expenseLeader.label} $${Math.round(diagnosis.expenseLeader.value).toLocaleString()}</b></span>
+    <span>利益率<b>${diagnosis.margin >= 0 ? "+" : ""}${diagnosis.margin}%</b></span>`;
+  ui.reportActions.innerHTML = diagnosis.actions.map(action => `<p>${action}</p>`).join("");
   const achievements = [
     `<p class="condition-note">${DAY_CONDITIONS[report.condition]?.label || "晴れ"}の営業を終了。新ラウンドは${currentDayCondition().label}、次回予報は${DAY_CONDITIONS[state.dayCondition.next].label}です。</p>`,
     ...(report.seasonalEvent ? [`<p class="season-note">${report.seasonalEvent}を開催し、イベント来園者は累計${report.boostedGuests}人になりました。</p>`] : []),
@@ -6379,9 +6482,12 @@ function settleRound() {
   const report = {
     round: state.round,
     condition: state.dayCondition.current,
+    difficulty: state.difficulty,
     revenue: metrics.revenue,
     expenses: metrics.expenses,
     net: metrics.net,
+    finance: { ...state.finance },
+    operations: roundReportOperationalSnapshot(metrics),
     rating,
     seasonalEvent: seasonalEvent?.label || null,
     crowdEvent: crowdEvent?.label || null,
@@ -6391,6 +6497,7 @@ function settleRound() {
     goalReward,
     ratingBonus
   };
+  report.diagnosis = roundReportDiagnosis(report, state.progression.reports[0] || null);
   state.money += goalReward + ratingBonus;
   advanceGoals(completedGoals);
   state.round++;
@@ -6741,6 +6848,8 @@ window.parkDebug = {
   transitVehicleSegment,
   calculateParkRating,
   reconcileParkUnlocks,
+  roundReportOperationalSnapshot,
+  roundReportDiagnosis,
   settleRound,
   closeRoundReport,
   adjustSelectedPrice,

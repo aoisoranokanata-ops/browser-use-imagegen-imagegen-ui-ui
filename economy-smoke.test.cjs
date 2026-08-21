@@ -277,6 +277,46 @@ debug.setDifficulty("beginner", { silent: true });
 assert.equal(state.money, 36000);
 assert.equal(state.tiles.find(tile => tile.object?.type === "kiosk").object.maxStock, 72);
 
+const warningDiagnosis = debug.roundReportDiagnosis({
+  difficulty: "beginner",
+  revenue: 200,
+  expenses: 700,
+  net: -500,
+  rating: { stars: 2 },
+  finance: {
+    admissionRevenue: 100,
+    rideRevenue: 50,
+    shopRevenue: 50,
+    maintenanceExpenses: 200,
+    staffExpenses: 300,
+    restockExpenses: 100,
+    marketingExpenses: 100,
+    eventExpenses: 0
+  },
+  operations: { brokenRides: 1, soldOutShops: 1, priceRejects: 2, clean: 60, happy: 65, roundGuests: 2 }
+}, { net: 100 });
+assert.equal(warningDiagnosis.status, "warning");
+assert.equal(warningDiagnosis.verdict, "要改善");
+assert.match(warningDiagnosis.trend, /-\$600/);
+assert.equal(warningDiagnosis.revenueLeader.label, "入園料");
+assert.equal(warningDiagnosis.expenseLeader.label, "スタッフ");
+assert.equal(warningDiagnosis.actions.length, 3);
+assert.match(warningDiagnosis.actions[0], /あと\$500/);
+assert.match(warningDiagnosis.actions[1], /故障中/);
+assert.match(warningDiagnosis.actions[2], /売り切れ/);
+const excellentDiagnosis = debug.roundReportDiagnosis({
+  difficulty: "standard",
+  revenue: 2000,
+  expenses: 1000,
+  net: 1000,
+  rating: { stars: 4 },
+  finance: { admissionRevenue: 900, rideRevenue: 700, shopRevenue: 400, maintenanceExpenses: 450, staffExpenses: 350, restockExpenses: 200 },
+  operations: { brokenRides: 0, soldOutShops: 0, priceRejects: 0, clean: 90, happy: 88, roundGuests: 20 }
+});
+assert.equal(excellentDiagnosis.status, "excellent");
+assert.equal(excellentDiagnosis.verdict, "好調");
+assert.match(excellentDiagnosis.actions[0], /\$500/);
+
 debug.saveGame();
 const beginnerOpeningMoney = state.money;
 math.random = () => .5;
@@ -1056,6 +1096,12 @@ assert.equal(element("conditionCurrent").textContent, "休日イベント");
 assert.match(element("reportAchievements").innerHTML, /次回予報/);
 assert.equal(fiveStarReport.rating.stars, 5);
 assert.equal(fiveStarReport.goalReward, 1850);
+assert.ok(fiveStarReport.finance.admissionRevenue > 0);
+assert.equal(typeof fiveStarReport.operations.operatingCost, "number");
+assert.ok(fiveStarReport.diagnosis.actions.length > 0);
+assert.match(element("reportDiagnosisLabel").textContent, /経営診断/);
+assert.match(element("reportBreakdown").innerHTML, /最大の収入/);
+assert.match(element("reportActions").innerHTML, /<p>/);
 assert.equal(state.progression.bestStars, 5);
 assert.ok(fiveStarReport.newUnlocks.includes("園内線路"));
 assert.ok(fiveStarReport.newUnlocks.includes("園内列車駅"));

@@ -604,6 +604,20 @@ button.active { background: #26313f; color: #fff8df; }
 .report-summary span { padding: 8px 5px; background: rgba(38, 49, 63, .05); border-radius: 5px; color: var(--muted); text-align: center; font-size: 9px; }
 .report-summary b { display: block; margin-top: 3px; color: var(--ink); font-size: 13px; }
 .report-summary b.negative { color: var(--coral); }
+.report-diagnosis { margin-top: 10px; padding: 10px 0; border-top: 1px solid rgba(38, 49, 63, .1); border-bottom: 1px solid rgba(38, 49, 63, .1); }
+.report-diagnosis-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.report-diagnosis-heading b { font-size: 11px; }
+.report-diagnosis-heading span { color: var(--muted); font-size: 9px; font-weight: 900; }
+.report-diagnosis[data-status="excellent"] .report-diagnosis-heading b,
+.report-diagnosis[data-status="stable"] .report-diagnosis-heading b { color: var(--green); }
+.report-diagnosis[data-status="warning"] .report-diagnosis-heading b { color: var(--coral); }
+.report-breakdown { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin-top: 7px; }
+.report-breakdown span { min-width: 0; padding: 6px; background: rgba(38, 49, 63, .045); border-radius: 4px; color: var(--muted); font-size: 8px; line-height: 1.35; }
+.report-breakdown b { display: block; margin-top: 2px; overflow: hidden; color: var(--ink); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.report-actions { display: grid; gap: 4px; margin-top: 7px; }
+.report-actions p { margin: 0; padding-left: 12px; color: var(--ink); font-size: 9px; line-height: 1.45; position: relative; }
+.report-actions p::before { content: ""; position: absolute; top: .52em; left: 1px; width: 5px; height: 5px; border-radius: 50%; background: var(--teal); }
+.report-diagnosis[data-status="warning"] .report-actions p::before { background: var(--coral); }
 .report-achievements { display: grid; gap: 5px; margin: 12px 0; }
 .report-achievements p { margin: 0; padding: 7px 9px; background: rgba(102, 184, 107, .12); border-left: 3px solid var(--green); border-radius: 4px; font-size: 10px; line-height: 1.4; }
 .report-achievements p.neutral { background: rgba(38, 49, 63, .05); border-left-color: var(--muted); }
