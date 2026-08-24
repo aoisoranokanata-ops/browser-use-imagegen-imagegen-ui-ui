@@ -78,6 +78,12 @@ const ui = {
   runningCost: document.getElementById("runningCost"),
   brokenCount: document.getElementById("brokenCount"),
   conditionAverage: document.getElementById("conditionAverage"),
+  disasterPanel: document.getElementById("disasterPanel"),
+  disasterStatus: document.getElementById("disasterStatus"),
+  disasterHint: document.getElementById("disasterHint"),
+  disasterDamaged: document.getElementById("disasterDamaged"),
+  disasterRecoveryCost: document.getElementById("disasterRecoveryCost"),
+  disasterRecoveryBtn: document.getElementById("disasterRecoveryBtn"),
   openRideCount: document.getElementById("openRideCount"),
   averageRidePopularity: document.getElementById("averageRidePopularity"),
   upgradedRideCount: document.getElementById("upgradedRideCount"),
@@ -97,6 +103,19 @@ const ui = {
   ratingTransit: document.getElementById("ratingTransit"),
   goalList: document.getElementById("goalList"),
   nextUnlock: document.getElementById("nextUnlock"),
+  developmentArrival: document.getElementById("developmentArrival"),
+  majorStationMilestone: document.getElementById("majorStationMilestone"),
+  majorStationStatus: document.getElementById("majorStationStatus"),
+  highwayMilestone: document.getElementById("highwayMilestone"),
+  highwayStatus: document.getElementById("highwayStatus"),
+  mascotStatus: document.getElementById("mascotStatus"),
+  mascotInvestBtn: document.getElementById("mascotInvestBtn"),
+  celebrityStatus: document.getElementById("celebrityStatus"),
+  celebrityCampaignBtn: document.getElementById("celebrityCampaignBtn"),
+  repeatGuestCount: document.getElementById("repeatGuestCount"),
+  celebrityGuestCount: document.getElementById("celebrityGuestCount"),
+  mascotRepeatRate: document.getElementById("mascotRepeatRate"),
+  developmentHint: document.getElementById("developmentHint"),
   landOwned: document.getElementById("landOwned"),
   landZoneList: document.getElementById("landZoneList"),
   landHint: document.getElementById("landHint"),
@@ -297,6 +316,20 @@ const MARKETING_CAMPAIGNS = {
   thrill: { label: "絶叫ファン", cost: 800, leads: 20, interval: .72, targetShare: .68 },
   scenic: { label: "景観好き", cost: 500, leads: 16, interval: .8, targetShare: .64 },
   foodie: { label: "グルメ層", cost: 550, leads: 18, interval: .78, targetShare: .66 }
+};
+const ACCESS_MILESTONES = {
+  major_station: { label: "最寄り主要駅", stars: 3, minRound: 3, minRides: 3, arrivalRate: 1.12 },
+  highway_interchange: { label: "最寄り高速インター", stars: 4, minRound: 6, minRides: 5, arrivalRate: 1.15 }
+};
+const MASCOT_CONFIG = {
+  name: "夢乃みらい",
+  costs: [4200, 3200, 4200],
+  repeatRates: [0, .1, .16, .22]
+};
+const CELEBRITY_CAMPAIGN = { label: "有名タレント全国CM", cost: 6500, duration: 2, arrivalRate: 1.35, requiredStars: 3 };
+const DISASTER_EVENTS = {
+  typhoon: { label: "台風", chance: .026, minRound: 4, minRides: 3, minDamage: 1, maxDamage: 2, condition: 22, cleanLoss: 9, sentimentLoss: 4, recoveryCost: 850, cooldown: 4 },
+  earthquake: { label: "地震", chance: .012, minRound: 5, minRides: 4, minDamage: 2, maxDamage: 3, condition: 12, cleanLoss: 6, sentimentLoss: 7, recoveryCost: 1100, cooldown: 5 }
 };
 const SEASON_ORDER = ["spring", "summer", "autumn", "winter"];
 const SEASONAL_EVENTS = {
@@ -548,6 +581,20 @@ const state = {
     attractedGuests: 0,
     refusals: 0,
     campaignsStarted: 0
+  },
+  development: {
+    accessOpened: [],
+    mascotLevel: 0,
+    repeatGuests: 0,
+    celebrityRoundsRemaining: 0,
+    celebrityAttracted: 0,
+    celebrityCampaigns: 0
+  },
+  disaster: {
+    activeType: null,
+    incidents: 0,
+    recovered: 0,
+    cooldownRounds: 0
   },
   seasonalEvent: {
     activeSeason: null,
@@ -809,7 +856,8 @@ function createRide(type, saved = null) {
     open: saved?.open === undefined ? true : !!saved.open,
     level: clamp(Math.round(Number(saved?.level ?? 1)), 1, RIDE_MANAGEMENT_CONFIG.maxLevel),
     popularity: clamp(Number(saved?.popularity ?? RIDE_MANAGEMENT_CONFIG.startingPopularity), 0, 100),
-    maintenancePolicy: RIDE_MANAGEMENT_CONFIG.policies[saved?.maintenancePolicy] ? saved.maintenancePolicy : "balanced"
+    maintenancePolicy: RIDE_MANAGEMENT_CONFIG.policies[saved?.maintenancePolicy] ? saved.maintenancePolicy : "balanced",
+    disasterDamage: DISASTER_EVENTS[saved?.disasterDamage] ? saved.disasterDamage : null
   };
 }
 
@@ -2553,7 +2601,11 @@ function workStaffTask(agent, dt) {
     target.object.fill = Math.max(0, Number(target.object.fill || 0) - work * 4.5);
   } else {
     target.object.condition = clamp(Number(target.object.condition ?? 100) + work * 7.5, 0, 100);
-    if (target.object.broken && target.object.condition >= 55) target.object.broken = false;
+    if (target.object.broken && target.object.condition >= 55) {
+      target.object.broken = false;
+      target.object.disasterDamage = null;
+      refreshDisasterRecovery();
+    }
   }
   if (!staffTaskIsValid(target)) finishStaffTask(agent);
 }
@@ -2732,6 +2784,235 @@ function marketingFitHint(type, fit = marketingFit(type)) {
     foodie: "飲食店の種類、在庫、評判を整えてから宣伝しましょう。"
   };
   return hints[type];
+}
+
+function reconcileAccessMilestones(announce = false) {
+  const opened = new Set(state.development.accessOpened || []);
+  const newOpenings = [];
+  for (const [id, milestone] of Object.entries(ACCESS_MILESTONES)) {
+    const eligible = state.progression.bestStars >= milestone.stars
+      && state.round >= milestone.minRound
+      && state.rides.length >= milestone.minRides;
+    if (!eligible || opened.has(id)) continue;
+    state.development.accessOpened.push(id);
+    opened.add(id);
+    newOpenings.push(milestone.label);
+  }
+  if (announce && newOpenings.length) toast(`${newOpenings.join("・")}が開通しました`);
+  return newOpenings;
+}
+
+function accessArrivalRate() {
+  return (state.development.accessOpened || []).reduce((rate, id) => rate * Number(ACCESS_MILESTONES[id]?.arrivalRate || 1), 1);
+}
+
+function mascotRepeatChance() {
+  const level = clamp(Math.round(Number(state.development.mascotLevel || 0)), 0, MASCOT_CONFIG.repeatRates.length - 1);
+  return MASCOT_CONFIG.repeatRates[level];
+}
+
+function promotionArrivalRate() {
+  return Number(state.development.celebrityRoundsRemaining || 0) > 0 ? CELEBRITY_CAMPAIGN.arrivalRate : 1;
+}
+
+function developmentArrivalInterval(baseInterval) {
+  return Number(baseInterval) / accessArrivalRate() / promotionArrivalRate();
+}
+
+function investInMascot() {
+  const level = clamp(Math.round(Number(state.development.mascotLevel || 0)), 0, MASCOT_CONFIG.costs.length);
+  if (state.progression.bestStars < 2) {
+    toast("公式キャラクターは評価2で制作できます");
+    return false;
+  }
+  if (level >= MASCOT_CONFIG.costs.length) {
+    toast(`${MASCOT_CONFIG.name}の展開は最大です`);
+    return false;
+  }
+  const cost = MASCOT_CONFIG.costs[level];
+  if (state.money < cost) {
+    toast("キャラクター投資の資金が足りません");
+    return false;
+  }
+  state.money -= cost;
+  state.finance.marketingExpenses += cost;
+  state.development.mascotLevel = level + 1;
+  computeStats();
+  toast(`${MASCOT_CONFIG.name}をLv.${state.development.mascotLevel}へ展開しました`);
+  return true;
+}
+
+function startCelebrityCampaign() {
+  if (state.progression.bestStars < CELEBRITY_CAMPAIGN.requiredStars) {
+    toast(`全国CMは評価${CELEBRITY_CAMPAIGN.requiredStars}で起用できます`);
+    return false;
+  }
+  if (Number(state.development.celebrityRoundsRemaining || 0) > 0) {
+    toast("全国CMは現在放映中です");
+    return false;
+  }
+  if (state.money < CELEBRITY_CAMPAIGN.cost) {
+    toast("タレント起用の予算が足りません");
+    return false;
+  }
+  state.money -= CELEBRITY_CAMPAIGN.cost;
+  state.finance.marketingExpenses += CELEBRITY_CAMPAIGN.cost;
+  state.development.celebrityRoundsRemaining = CELEBRITY_CAMPAIGN.duration;
+  state.development.celebrityCampaigns = Math.max(0, Number(state.development.celebrityCampaigns || 0)) + 1;
+  computeStats();
+  toast(`${CELEBRITY_CAMPAIGN.label}を開始しました`);
+  return true;
+}
+
+function advanceDevelopmentRound() {
+  const wasActive = Number(state.development.celebrityRoundsRemaining || 0) > 0;
+  if (wasActive) state.development.celebrityRoundsRemaining = Math.max(0, state.development.celebrityRoundsRemaining - 1);
+  return wasActive && state.development.celebrityRoundsRemaining === 0;
+}
+
+function renderDevelopmentPanel() {
+  const stationOpen = state.development.accessOpened.includes("major_station");
+  const highwayOpen = state.development.accessOpened.includes("highway_interchange");
+  const mascotLevel = clamp(Math.round(Number(state.development.mascotLevel || 0)), 0, MASCOT_CONFIG.costs.length);
+  const mascotMaxed = mascotLevel >= MASCOT_CONFIG.costs.length;
+  const mascotCost = mascotMaxed ? 0 : MASCOT_CONFIG.costs[mascotLevel];
+  const celebrityRounds = Math.max(0, Number(state.development.celebrityRoundsRemaining || 0));
+  const arrivalBoost = Math.round((accessArrivalRate() * promotionArrivalRate() - 1) * 100);
+  ui.developmentArrival.textContent = `来園 +${arrivalBoost}%`;
+  ui.majorStationMilestone.classList.toggle("open", stationOpen);
+  ui.majorStationStatus.textContent = stationOpen ? "開通済み・来園 +12%" : "評価3・R3・ライド3基";
+  ui.highwayMilestone.classList.toggle("open", highwayOpen);
+  ui.highwayStatus.textContent = highwayOpen ? "開通済み・来園 +15%" : "評価4・R6・ライド5基";
+  ui.mascotStatus.textContent = mascotLevel
+    ? `Lv.${mascotLevel}・累計リピーター ${Math.floor(state.development.repeatGuests)}人`
+    : "未契約・リピーターを育成";
+  ui.mascotInvestBtn.textContent = mascotMaxed
+    ? "展開完了"
+    : `${["制作", "グッズ展開", "全国展開"][mascotLevel]} $${mascotCost.toLocaleString()}`;
+  ui.mascotInvestBtn.disabled = mascotMaxed || state.progression.bestStars < 2 || state.money < mascotCost;
+  ui.celebrityStatus.textContent = celebrityRounds
+    ? `放映中・残り${celebrityRounds}ラウンド・来園 +35%`
+    : state.progression.bestStars >= CELEBRITY_CAMPAIGN.requiredStars
+      ? "2ラウンド放映・来園 +35%"
+      : `評価${CELEBRITY_CAMPAIGN.requiredStars}で起用可能`;
+  ui.celebrityCampaignBtn.textContent = celebrityRounds ? "放映中" : `起用 $${CELEBRITY_CAMPAIGN.cost.toLocaleString()}`;
+  ui.celebrityCampaignBtn.disabled = !!celebrityRounds || state.progression.bestStars < CELEBRITY_CAMPAIGN.requiredStars || state.money < CELEBRITY_CAMPAIGN.cost;
+  ui.repeatGuestCount.textContent = `${Math.floor(state.development.repeatGuests)}人`;
+  ui.celebrityGuestCount.textContent = `${Math.floor(state.development.celebrityAttracted)}人`;
+  ui.mascotRepeatRate.textContent = `${Math.round(mascotRepeatChance() * 100)}%`;
+  ui.developmentHint.textContent = celebrityRounds
+    ? "全国CMの集客中です。行列、売店在庫、スタッフ配置を厚めにしましょう。"
+    : !stationOpen
+      ? "評価3・ラウンド3・ライド3基で主要駅が開通します。"
+      : !highwayOpen
+        ? "次は評価4・ラウンド6・ライド5基で高速インターが開通します。"
+        : "鉄道と自動車の広域アクセスが完成しました。受け入れ容量を整えましょう。";
+}
+
+function disasterDamagedRides() {
+  return state.rides.filter(ride => DISASTER_EVENTS[ride.disasterDamage]);
+}
+
+function disasterRecoveryCost() {
+  const config = DISASTER_EVENTS[state.disaster.activeType];
+  return config ? disasterDamagedRides().length * config.recoveryCost : 0;
+}
+
+function refreshDisasterRecovery(options = {}) {
+  if (!state.disaster.activeType || disasterDamagedRides().length) return false;
+  const label = DISASTER_EVENTS[state.disaster.activeType]?.label || "災害";
+  state.disaster.activeType = null;
+  state.disaster.recovered = Math.max(0, Number(state.disaster.recovered || 0)) + 1;
+  if (!options.silent) toast(`${label}被害から復旧しました`);
+  return true;
+}
+
+function applyDisaster(type) {
+  const config = DISASTER_EVENTS[type];
+  const candidates = state.rides.filter(ride => !ride.disasterDamage);
+  if (!config || candidates.length < config.minDamage) return null;
+  const damageCount = Math.min(candidates.length, config.minDamage + Math.floor(Math.random() * (config.maxDamage - config.minDamage + 1)));
+  const startIndex = Math.floor(Math.random() * candidates.length);
+  const damaged = [];
+  for (let index = 0; index < damageCount; index++) {
+    const ride = candidates[(startIndex + index) % candidates.length];
+    const rideTile = tileForObject(ride);
+    for (const guest of [...ride.riders, ...ride.queue]) {
+      guest.goal = null;
+      guest.goalType = null;
+      guest.state = "leaving";
+      guest.tile = nearestPathForTile(rideTile) || guest.tile || entrance;
+      guest.pos = { x: guest.tile.x, y: guest.tile.y };
+      guest.path = findPath(guest.tile, entrance);
+      guest.satisfaction = clamp(Number(guest.satisfaction || 72) - 12, 0, 100);
+      guestThought(guest, `${config.label}のためライドが運休になった`, "災害で運休", "negative", true);
+    }
+    ride.riders = [];
+    ride.queue = [];
+    ride.broken = true;
+    ride.condition = Math.min(Number(ride.condition ?? 100), config.condition);
+    ride.disasterDamage = type;
+    ride.popularity = clamp(Number(ride.popularity ?? RIDE_MANAGEMENT_CONFIG.startingPopularity) - 4, 0, 100);
+    damaged.push(tools[ride.type].label);
+  }
+  state.disaster.activeType = type;
+  state.disaster.incidents = Math.max(0, Number(state.disaster.incidents || 0)) + 1;
+  state.disaster.cooldownRounds = config.cooldown;
+  state.clean = clamp(state.clean - config.cleanLoss, 20, 100);
+  state.sentiment = clamp(state.sentiment - config.sentimentLoss, -20, 20);
+  return { type, label: config.label, damaged, recoveryCost: damaged.length * config.recoveryCost };
+}
+
+function rollDisasterEvent() {
+  if (state.difficulty !== "challenge" || state.disaster.activeType) return null;
+  if (state.disaster.cooldownRounds > 0) {
+    state.disaster.cooldownRounds--;
+    return null;
+  }
+  let roll = Math.random();
+  for (const [type, config] of Object.entries(DISASTER_EVENTS)) {
+    if (state.round >= config.minRound && state.rides.length >= config.minRides && roll < config.chance) return applyDisaster(type);
+    roll -= config.chance;
+  }
+  return null;
+}
+
+function emergencyDisasterRecovery() {
+  const damaged = disasterDamagedRides();
+  const cost = disasterRecoveryCost();
+  if (!damaged.length || !cost) return false;
+  if (state.money < cost) {
+    toast("緊急復旧の資金が足りません");
+    return false;
+  }
+  state.money -= cost;
+  state.finance.maintenanceExpenses += cost;
+  for (const ride of damaged) {
+    ride.condition = Math.max(65, Number(ride.condition || 0));
+    ride.broken = false;
+    ride.disasterDamage = null;
+  }
+  refreshDisasterRecovery();
+  computeStats();
+  return true;
+}
+
+function renderDisasterPanel() {
+  const damaged = disasterDamagedRides();
+  const config = DISASTER_EVENTS[state.disaster.activeType];
+  const cost = disasterRecoveryCost();
+  ui.disasterPanel.dataset.status = config && damaged.length ? "active" : "safe";
+  ui.disasterStatus.textContent = config && damaged.length ? `${config.label}被害` : "平常";
+  ui.disasterHint.textContent = config && damaged.length
+    ? "整備員が順次復旧。緊急復旧なら即時再開"
+    : state.difficulty === "challenge"
+      ? `低確率・次回判定まで${Math.max(0, Number(state.disaster.cooldownRounds || 0))}ラウンド`
+      : "上級のみ低確率で発生";
+  ui.disasterDamaged.textContent = `${damaged.length}基`;
+  ui.disasterRecoveryCost.textContent = `$${cost.toLocaleString()}`;
+  ui.disasterRecoveryBtn.hidden = !damaged.length;
+  ui.disasterRecoveryBtn.textContent = `緊急復旧 $${cost.toLocaleString()}`;
+  ui.disasterRecoveryBtn.disabled = state.money < cost;
 }
 
 function chooseGuestArchetype(campaignType = state.marketing?.activeCampaign) {
@@ -3130,7 +3411,9 @@ function update(dt) {
   const transitStops = busStops().length;
   const admissionPressure = Math.max(0, state.admissionFee - 25) * .045;
   const campaignInterval = activeMarketingCampaign()?.interval || 1;
-  const interval = Math.max(.58, seasonalArrivalInterval(dayConditionArrivalInterval((3.6 - attraction / 42 - state.round * .08 - transitStops * .14 + admissionPressure) * campaignInterval)) * difficultyArrivalFactor());
+  const interval = Math.max(.58, developmentArrivalInterval(
+    seasonalArrivalInterval(dayConditionArrivalInterval((3.6 - attraction / 42 - state.round * .08 - transitStops * .14 + admissionPressure) * campaignInterval))
+  ) * difficultyArrivalFactor());
   const guestCap = Math.max(8, 12 + state.round * 5 + difficultyConfig().guestCapBonus);
   if (spawnTimer > interval && state.guests.length < guestCap) {
     spawnTimer = 0;
@@ -3420,14 +3703,16 @@ function spawnGuest() {
 
 function spawnGuestAt(startTile) {
   const campaign = activeMarketingCampaign();
+  const celebrityActive = Number(state.development.celebrityRoundsRemaining || 0) > 0;
   const conditionType = state.dayCondition.current;
   const campaignType = campaign?.type || null;
   const archetype = chooseGuestArchetype(campaignType);
+  const repeater = Math.random() < mascotRepeatChance();
   if (campaign) {
     state.marketing.remainingLeads = Math.max(0, Number(state.marketing.remainingLeads || 0) - 1);
     if (state.marketing.remainingLeads <= 0) state.marketing.activeCampaign = null;
   }
-  const refusalChance = clamp((state.admissionFee - 20) * .014 * difficultyConfig().refusalMultiplier, 0, .82);
+  const refusalChance = clamp((state.admissionFee - 20) * .014 * difficultyConfig().refusalMultiplier * (repeater ? .45 : 1), 0, .82);
   if (Math.random() < refusalChance) {
     if (campaign) state.marketing.refusals = Math.max(0, Number(state.marketing.refusals || 0)) + 1;
     addGuestLog("来園希望", "入園料が高くて今日は見送った", "negative");
@@ -3450,8 +3735,9 @@ function spawnGuestAt(startTile) {
     color,
     archetype,
     profile,
+    repeater,
     spent: false,
-    budget: (archetype === "family" ? 48 : 28) + Math.random() * 54,
+    budget: (archetype === "family" ? 48 : 28) + Math.random() * 54 + (repeater ? 12 : 0),
     priceSensitivity: .65 + Math.random() * .8,
     hunger: (archetype === "foodie" ? 52 : 24) + (conditionType === "holiday" ? 5 : 0) + Math.random() * 18,
     thirst: (archetype === "thrill" ? 38 : 22) + (conditionType === "heatwave" ? 14 : 0) + Math.random() * 20,
@@ -3461,6 +3747,7 @@ function spawnGuestAt(startTile) {
     restroomNeed: (archetype === "family" ? 32 : 20) + Math.random() * 40,
     satisfaction: clamp((campaignFit === null ? 72 : clamp(66 + (campaignFit - 50) * .24, 54, 82))
       + difficultyConfig().satisfactionBonus
+      + (repeater ? 7 : 0)
       + Number(activeSeasonalEvent()?.satisfaction || 0) + Number(activeCrowdEvent()?.satisfaction || 0), 0, 100),
     campaignType,
     thought: null,
@@ -3475,11 +3762,15 @@ function spawnGuestAt(startTile) {
   state.money += admissionRevenue;
   state.finance.admissionRevenue += admissionRevenue;
   state.guests.push(guest);
+  if (repeater) state.development.repeatGuests = Math.max(0, Number(state.development.repeatGuests || 0)) + 1;
+  if (celebrityActive) state.development.celebrityAttracted = Math.max(0, Number(state.development.celebrityAttracted || 0)) + 1;
   if (activeSeasonalEvent() || activeCrowdEvent()) state.seasonalEvent.boostedGuests++;
   recordSeasonalChallenge("guests");
   startTile.traffic = Number(startTile.traffic || 0) + .5;
   if (campaign) state.marketing.attractedGuests = Math.max(0, Number(state.marketing.attractedGuests || 0)) + 1;
-  if (campaignMatch && campaignFit < 50) {
+  if (repeater) {
+    guestThought(guest, `${MASCOT_CONFIG.name}にまた会いたくて来園した`, "また来たよ", "positive", true);
+  } else if (campaignMatch && campaignFit < 50) {
     guestThought(guest, `${MARKETING_CAMPAIGNS[campaignType].label}向けと聞いたけれど設備が物足りない`, "期待と違う", "negative", true);
   } else if (campaignMatch && campaignFit >= 75) {
     guestThought(guest, `${MARKETING_CAMPAIGNS[campaignType].label}向けの充実したパークでうれしい`, "期待どおり", "positive", true);
@@ -4394,6 +4685,7 @@ function snapshotObject(object) {
     saved.level = clamp(Math.round(Number(object.level || 1)), 1, RIDE_MANAGEMENT_CONFIG.maxLevel);
     saved.popularity = clamp(Number(object.popularity ?? RIDE_MANAGEMENT_CONFIG.startingPopularity), 0, 100);
     saved.maintenancePolicy = RIDE_MANAGEMENT_CONFIG.policies[object.maintenancePolicy] ? object.maintenancePolicy : "balanced";
+    saved.disasterDamage = DISASTER_EVENTS[object.disasterDamage] ? object.disasterDamage : null;
   } else if (tools[object.type]?.shop) {
     saved.stock = Number(object.stock ?? shopCapacityForDifficulty(state.difficulty, object.type));
     saved.maxStock = Number(object.maxStock ?? shopCapacityForDifficulty(state.difficulty, object.type));
@@ -4701,6 +4993,15 @@ function saveGame() {
     dayCondition: { ...state.dayCondition },
     finance: { ...state.finance },
     marketing: { ...state.marketing },
+    development: {
+      accessOpened: [...state.development.accessOpened],
+      mascotLevel: state.development.mascotLevel,
+      repeatGuests: state.development.repeatGuests,
+      celebrityRoundsRemaining: state.development.celebrityRoundsRemaining,
+      celebrityAttracted: state.development.celebrityAttracted,
+      celebrityCampaigns: state.development.celebrityCampaigns
+    },
+    disaster: { ...state.disaster },
     seasonalEvent: { ...state.seasonalEvent },
     guestLog: state.guestLog,
     staff: { ...state.staff },
@@ -4779,6 +5080,22 @@ function loadGame() {
       attractedGuests: Math.max(0, Number(save.marketing?.attractedGuests) || 0),
       refusals: Math.max(0, Number(save.marketing?.refusals) || 0),
       campaignsStarted: Math.max(0, Number(save.marketing?.campaignsStarted) || 0)
+    };
+    state.development = {
+      accessOpened: Array.isArray(save.development?.accessOpened)
+        ? save.development.accessOpened.filter(id => ACCESS_MILESTONES[id])
+        : [],
+      mascotLevel: clamp(Math.round(Number(save.development?.mascotLevel || 0)), 0, MASCOT_CONFIG.costs.length),
+      repeatGuests: Math.max(0, Number(save.development?.repeatGuests) || 0),
+      celebrityRoundsRemaining: clamp(Math.round(Number(save.development?.celebrityRoundsRemaining || 0)), 0, CELEBRITY_CAMPAIGN.duration),
+      celebrityAttracted: Math.max(0, Number(save.development?.celebrityAttracted) || 0),
+      celebrityCampaigns: Math.max(0, Number(save.development?.celebrityCampaigns) || 0)
+    };
+    state.disaster = {
+      activeType: DISASTER_EVENTS[save.disaster?.activeType] ? save.disaster.activeType : null,
+      incidents: Math.max(0, Number(save.disaster?.incidents) || 0),
+      recovered: Math.max(0, Number(save.disaster?.recovered) || 0),
+      cooldownRounds: Math.max(0, Math.round(Number(save.disaster?.cooldownRounds) || 0))
     };
     const savedSeasonCandidate = SEASONAL_EVENTS[save.seasonalEvent?.activeSeason] && save.seasonalEvent.activeSeason === seasonForRound()
       ? save.seasonalEvent.activeSeason
@@ -4877,6 +5194,8 @@ function loadGame() {
     rebuildRideList();
     syncStaffAgents();
     restoreProgressionState(save.progression);
+    reconcileAccessMilestones(false);
+    if (!disasterDamagedRides().length) state.disaster.activeType = null;
     progressionRenderSignature = "";
     undoStack.length = 0;
     updateUndoButton();
@@ -5061,6 +5380,8 @@ function computeStats() {
   ui.financeHint.classList.toggle("warning", financeWarning);
   renderAnalysisPanel();
   renderMarketingPanel();
+  renderDevelopmentPanel();
+  renderDisasterPanel();
   ui.brokenCount.textContent = broken;
   ui.conditionAverage.textContent = `${Math.round(averageCondition)}%`;
   const openRides = state.rides.filter(ride => ride.open !== false).length;
@@ -6484,6 +6805,9 @@ function showRoundReport(report) {
     ...(report.seasonalEvent ? [`<p class="season-note">${report.seasonalEvent}を開催し、イベント来園者は累計${report.boostedGuests}人になりました。</p>`] : []),
     ...(report.seasonalResult ? [`<p class="season-result ${report.seasonalResult.rankKey}">イベント結果: ${report.seasonalResult.rankLabel}（${report.seasonalResult.completed}/4達成）　+$${report.seasonalResult.reward.toLocaleString()}</p>`] : []),
     ...(report.crowdEvent ? [`<p class="season-note">集客イベント「${report.crowdEvent}」が終了しました。</p>`] : []),
+    ...(report.accessOpenings || []).map(label => `<p class="access-note">広域アクセス開通: ${label}　恒久的に来園数が増加します。</p>`),
+    ...(report.celebrityEnded ? [`<p class="promotion-note">有名タレント全国CMの放映を終了。累計${Math.floor(state.development.celebrityAttracted)}人を集客しました。</p>`] : []),
+    ...(report.disasterEvent ? [`<p class="disaster-note">突発イベント: ${report.disasterEvent.label}により${report.disasterEvent.damaged.join("・")}が被害。整備員または緊急復旧で再開できます。</p>`] : []),
     ...report.completedGoals.map(status => `<p>目標達成: ${status.goal.label}　+$${status.goal.reward.toLocaleString()}</p>`),
     ...report.newUnlocks.map(label => `<p>新解禁: ${label}</p>`)
   ];
@@ -6511,6 +6835,8 @@ function settleRound() {
     .filter(status => status.complete);
   const goalReward = completedGoals.reduce((sum, status) => sum + status.goal.reward, 0);
   const newUnlocks = reconcileParkUnlocks(rating, false);
+  const accessOpenings = reconcileAccessMilestones(false);
+  const disasterEvent = rollDisasterEvent();
   const baseBonus = metrics.net > 0 && state.happy >= 70
     ? Math.min(600, Math.round(state.happy * 2 + metrics.net * .05))
     : 0;
@@ -6532,6 +6858,8 @@ function settleRound() {
     boostedGuests: state.seasonalEvent.boostedGuests,
     completedGoals,
     newUnlocks,
+    accessOpenings,
+    disasterEvent,
     goalReward,
     ratingBonus
   };
@@ -6539,6 +6867,7 @@ function settleRound() {
   state.money += goalReward + ratingBonus;
   advanceGoals(completedGoals);
   state.round++;
+  report.celebrityEnded = advanceDevelopmentRound();
   const seasonalResult = advanceSeasonalEvents();
   if (seasonalResult) {
     seasonalResult.round = report.round;
@@ -6612,6 +6941,9 @@ ui.marketingThrill.addEventListener("click", () => startMarketingCampaign("thril
 ui.marketingScenic.addEventListener("click", () => startMarketingCampaign("scenic"));
 ui.marketingFoodie.addEventListener("click", () => startMarketingCampaign("foodie"));
 ui.marketingCancel.addEventListener("click", cancelMarketingCampaign);
+ui.mascotInvestBtn.addEventListener("click", investInMascot);
+ui.celebrityCampaignBtn.addEventListener("click", startCelebrityCampaign);
+ui.disasterRecoveryBtn.addEventListener("click", emergencyDisasterRecovery);
 ui.shopPricingAction.addEventListener("click", focusHighestPricedShop);
 ui.shopDemandForecast.addEventListener("click", event => {
   const kind = event.target.closest("[data-shop-demand-kind]")?.dataset.shopDemandKind;
@@ -6687,6 +7019,7 @@ if (DIFFICULTY_CONFIGS[preferredDifficulty] && preferredDifficulty !== state.dif
 }
 renderDifficultySelection();
 restoreProgressionState(null);
+reconcileAccessMilestones(false);
 renderGuestLog();
 updateUndoButton();
 syncStaffAgents();
@@ -6741,6 +7074,16 @@ window.parkDebug = {
       marketingLeads: Math.ceil(state.marketing.remainingLeads),
       marketingAttracted: Math.floor(state.marketing.attractedGuests),
       marketingRefusals: Math.floor(state.marketing.refusals),
+      accessOpened: [...state.development.accessOpened],
+      accessArrivalRate: Number(accessArrivalRate().toFixed(3)),
+      mascotLevel: state.development.mascotLevel,
+      mascotRepeatRate: mascotRepeatChance(),
+      repeatGuests: Math.floor(state.development.repeatGuests),
+      celebrityRoundsRemaining: state.development.celebrityRoundsRemaining,
+      celebrityAttracted: Math.floor(state.development.celebrityAttracted),
+      disaster: state.disaster.activeType,
+      disasterDamagedRides: disasterDamagedRides().length,
+      disasterIncidents: state.disaster.incidents,
       titleScreenActive,
       openingMusicAvailable,
       dayCondition: state.dayCondition.current,
@@ -6825,6 +7168,21 @@ window.parkDebug = {
   activeMarketingCampaign,
   marketingFit,
   marketingFitHint,
+  reconcileAccessMilestones,
+  accessArrivalRate,
+  mascotRepeatChance,
+  promotionArrivalRate,
+  developmentArrivalInterval,
+  investInMascot,
+  startCelebrityCampaign,
+  advanceDevelopmentRound,
+  renderDevelopmentPanel,
+  disasterDamagedRides,
+  disasterRecoveryCost,
+  applyDisaster,
+  rollDisasterEvent,
+  emergencyDisasterRecovery,
+  renderDisasterPanel,
   chooseGuestArchetype,
   startGame,
   prepareOpeningMusic,

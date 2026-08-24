@@ -229,6 +229,38 @@
         <div id="goalList" class="goal-list"></div>
         <div class="next-unlock"><span>次の解禁</span><b id="nextUnlock">評価を上げよう</b></div>
       </section>
+      <section class="development-panel" aria-label="広域アクセスとPR投資">
+        <div class="development-heading">
+          <span><strong>広域アクセス・PR</strong><small>発展による恒久集客と戦略投資</small></span>
+          <b id="developmentArrival">来園 +0%</b>
+        </div>
+        <div class="access-roadmap" aria-label="広域アクセス開通状況">
+          <div id="majorStationMilestone" class="access-milestone">
+            <span class="access-symbol" aria-hidden="true">駅</span>
+            <span><b>最寄り主要駅</b><small id="majorStationStatus">評価3・R3・ライド3基</small></span>
+          </div>
+          <div id="highwayMilestone" class="access-milestone">
+            <span class="access-symbol" aria-hidden="true">IC</span>
+            <span><b>最寄り高速インター</b><small id="highwayStatus">評価4・R6・ライド5基</small></span>
+          </div>
+        </div>
+        <div class="promotion-row mascot-promotion">
+          <img src="assets/mascot-yumeno-mirai.png" alt="ゆめじまパーク公式キャラクター 夢乃みらい">
+          <span><b>公式キャラ「夢乃みらい」</b><small id="mascotStatus">未契約・リピーターを育成</small></span>
+          <button id="mascotInvestBtn" type="button">制作 $4,200</button>
+        </div>
+        <div class="promotion-row celebrity-promotion">
+          <span class="promotion-symbol" aria-hidden="true">CM</span>
+          <span><b>有名タレント全国CM</b><small id="celebrityStatus">評価3で起用可能</small></span>
+          <button id="celebrityCampaignBtn" type="button">起用 $6,500</button>
+        </div>
+        <div class="development-metrics">
+          <span>リピーター<b id="repeatGuestCount">0人</b></span>
+          <span>CM集客<b id="celebrityGuestCount">0人</b></span>
+          <span>キャラ効果<b id="mascotRepeatRate">0%</b></span>
+        </div>
+        <p id="developmentHint">評価3・ラウンド3・ライド3基で主要駅が開通します。</p>
+      </section>
       <section class="land-panel" aria-label="パーク用地の拡張">
         <div class="land-heading">
           <span><strong>パーク用地</strong><small>評価と資金で新エリアを開放</small></span>
@@ -372,6 +404,17 @@
         <div class="maintenance-status">
           <span>故障中 <b id="brokenCount">0</b></span>
           <span>平均状態 <b id="conditionAverage">100%</b></span>
+        </div>
+        <div id="disasterPanel" class="disaster-panel" data-status="safe">
+          <div class="disaster-heading">
+            <span><b>災害・復旧</b><small id="disasterHint">上級のみ低確率で発生</small></span>
+            <strong id="disasterStatus">平常</strong>
+          </div>
+          <div class="disaster-metrics">
+            <span>被害ライド<b id="disasterDamaged">0基</b></span>
+            <span>復旧費<b id="disasterRecoveryCost">$0</b></span>
+          </div>
+          <button id="disasterRecoveryBtn" type="button" hidden>緊急復旧</button>
         </div>
         <div class="ride-operations-status" aria-label="ライド運営状況">
           <span>営業 <b id="openRideCount">0 / 0</b></span>
