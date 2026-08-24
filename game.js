@@ -3,6 +3,7 @@ const ctx = canvas.getContext("2d");
 const ui = {
   titleScreen: document.getElementById("titleScreen"),
   titleStartBtn: document.getElementById("titleStartBtn"),
+  titleDifficultyDetail: document.getElementById("titleDifficultyDetail"),
   titleMusicBtn: document.getElementById("titleMusicBtn"),
   gameMusicBtn: document.getElementById("gameMusicBtn"),
   openingMusic: document.getElementById("openingMusic"),
@@ -235,23 +236,29 @@ const LAND_THEMES = {
 };
 const DIFFICULTY_CONFIGS = {
   beginner: {
-    label: "初級", initialMoney: 36000, costMultiplier: .62, graceRounds: 4, graceMultiplier: .55,
-    revenueMultiplier: 1.25, arrivalMultiplier: .86, guestCapBonus: 6, refusalMultiplier: .6,
-    wearMultiplier: .68, failureMultiplier: .55, satisfactionBonus: 5, challengeMultiplier: .8
+    label: "初級", detail: "のびのび開発・運営費55%軽減・食事も売れやすい",
+    initialMoney: 50000, costMultiplier: .45, graceRounds: 6, graceMultiplier: .45,
+    revenueMultiplier: 1.4, buildCostMultiplier: .65, shopSupplyMultiplier: .6, shopToleranceBonus: 3,
+    arrivalMultiplier: .74, guestCapBonus: 14, refusalMultiplier: .35,
+    wearMultiplier: .45, failureMultiplier: .3, satisfactionBonus: 8, challengeMultiplier: .7
   },
   standard: {
-    label: "普通", initialMoney: 24000, costMultiplier: 1, graceRounds: 1, graceMultiplier: .85,
-    revenueMultiplier: 1, arrivalMultiplier: 1, guestCapBonus: 0, refusalMultiplier: 1,
+    label: "普通", detail: "平均バランス・売上と費用を見ながら素直に成長",
+    initialMoney: 28000, costMultiplier: 1, graceRounds: 0, graceMultiplier: 1,
+    revenueMultiplier: 1, buildCostMultiplier: 1, shopSupplyMultiplier: 1, shopToleranceBonus: 1,
+    arrivalMultiplier: 1, guestCapBonus: 0, refusalMultiplier: 1,
     wearMultiplier: 1, failureMultiplier: 1, satisfactionBonus: 0, challengeMultiplier: 1
   },
   challenge: {
-    label: "上級", initialMoney: 16000, costMultiplier: 1.25, graceRounds: 0, graceMultiplier: 1,
-    revenueMultiplier: .9, arrivalMultiplier: 1.15, guestCapBonus: -2, refusalMultiplier: 1.2,
-    wearMultiplier: 1.3, failureMultiplier: 1.4, satisfactionBonus: -3, challengeMultiplier: 1.2
+    label: "上級", detail: "本格経営・稼働率、仕入れ、維持費から利益率を設計",
+    initialMoney: 18000, costMultiplier: 1.15, graceRounds: 0, graceMultiplier: 1,
+    revenueMultiplier: 1, buildCostMultiplier: 1.1, shopSupplyMultiplier: 1.15, shopToleranceBonus: 0,
+    arrivalMultiplier: 1.08, guestCapBonus: -2, refusalMultiplier: 1.1,
+    wearMultiplier: 1.2, failureMultiplier: 1.25, satisfactionBonus: -1, challengeMultiplier: 1.15
   }
 };
 const SHOP_CONFIG = {
-  capacities: { beginner: 72, standard: 45, challenge: 30 },
+  capacities: { beginner: 100, standard: 60, challenge: 42 },
   deliverySize: 30,
   deliverySeconds: 8,
   autoUnitCost: 3,
@@ -456,7 +463,7 @@ const tools = {
   splash_boats: { cost: 3100, label: "スプラッシュボート", ride: true, cap: 10, duration: 9, appeal: 29, upkeep: 31, defaultPrice: 11, color: "#36a8c8", limitedSeason: "summer" },
   harvest_spin: { cost: 2800, label: "ハーベストスピン", ride: true, cap: 8, duration: 8, appeal: 27, upkeep: 25, defaultPrice: 10, color: "#d88a32", limitedSeason: "autumn" },
   aurora_tower: { cost: 3600, label: "オーロラタワー", ride: true, cap: 12, duration: 11, appeal: 33, upkeep: 36, defaultPrice: 12, color: "#796dc0", limitedSeason: "winter" },
-  kiosk: { cost: 900, label: "スナック売店", shop: true, shopKind: "food", defaultPrice: 8, unitCost: 3, instantUnitCost: 4, deliverySize: 30, capacityScale: 1, staffWage: 18 },
+  kiosk: { cost: 900, label: "スナック売店", shop: true, shopKind: "food", defaultPrice: 7, unitCost: 3, instantUnitCost: 4, deliverySize: 30, capacityScale: 1, staffWage: 18 },
   drink_stand: { cost: 750, label: "ドリンクスタンド", shop: true, shopKind: "drink", defaultPrice: 6, unitCost: 2, instantUnitCost: 3, deliverySize: 36, capacityScale: 1.2, staffWage: 15 },
   souvenir_shop: { cost: 1600, label: "おみやげショップ", shop: true, shopKind: "souvenir", defaultPrice: 14, unitCost: 6, instantUnitCost: 8, deliverySize: 20, capacityScale: .75, staffWage: 22 },
   bench: { cost: 180, label: "パークベンチ", amenity: "bench", scenery: 2, upkeep: 1 },
@@ -2603,7 +2610,8 @@ function shopDeliverySize(shop) {
 
 function shopUnitCost(shop, instant = false) {
   const tool = tools[shop?.type] || tools.kiosk;
-  return Math.max(1, Number(instant ? tool.instantUnitCost : tool.unitCost) || (instant ? SHOP_CONFIG.instantUnitCost : SHOP_CONFIG.autoUnitCost));
+  const base = Number(instant ? tool.instantUnitCost : tool.unitCost) || (instant ? SHOP_CONFIG.instantUnitCost : SHOP_CONFIG.autoUnitCost);
+  return Math.max(1, Math.ceil(base * difficultyConfig().shopSupplyMultiplier));
 }
 
 function shopStaffWage(shop) {
@@ -3231,6 +3239,15 @@ function difficultyFailureFactor() {
   return difficultyConfig().failureMultiplier;
 }
 
+function difficultyBuildCost(toolNameOrTool) {
+  const tool = typeof toolNameOrTool === "string" ? tools[toolNameOrTool] : toolNameOrTool;
+  const base = Math.max(0, Number(tool?.cost || 0));
+  if (!base) return 0;
+  const raw = base * difficultyConfig().buildCostMultiplier;
+  const step = base >= 500 ? 50 : base >= 100 ? 10 : 5;
+  return Math.max(step, Math.round(raw / step) * step);
+}
+
 function operatingCost() {
   return operatingCostBreakdown().total;
 }
@@ -3722,7 +3739,8 @@ function shopPriceTolerance(guest, shop = { type: "kiosk" }) {
     + (Number(shop.reputation ?? SHOP_MANAGEMENT_CONFIG.startingReputation) - SHOP_MANAGEMENT_CONFIG.startingReputation) * .025;
   const theme = landThemeForObject(shop);
   const themePremium = theme?.id === "market" && landThemeMatchesGuest(theme, guest) ? 2 : 0;
-  return clamp(Math.round(tools[shop.type]?.defaultPrice + needPremium + archetypePremium + servicePremium + themePremium - sensitivityPenalty), 3, 22);
+  return clamp(Math.round(tools[shop.type]?.defaultPrice + difficultyConfig().shopToleranceBonus
+    + needPremium + archetypePremium + servicePremium + themePremium - sensitivityPenalty), 3, 22);
 }
 
 function shopRecommendedPrice(shop) {
@@ -5273,7 +5291,7 @@ function getPlacementStatus(tile, toolName = selectedTool) {
     const event = SEASONAL_EVENTS[tool.limitedSeason];
     return { valid: false, reason: `${event.seasonLabel}の${event.label}開催中のみ建設できます` };
   }
-  if (state.money < tool.cost) return { valid: false, reason: "資金が足りません" };
+  if (state.money < difficultyBuildCost(tool)) return { valid: false, reason: "資金が足りません" };
   if (toolName === "path") {
     const valid = tile.terrain !== "water" && !tile.object && !tile.path;
     return { valid, reason: valid ? "" : "通路には空いた土地が必要です" };
@@ -5509,7 +5527,7 @@ function build(tile, options = {}) {
   } else {
     tile.object = { type: selectedTool };
   }
-  state.money -= tool.cost;
+  state.money -= difficultyBuildCost(tool);
   if (tile.litter) tile.litter = Math.max(0, tile.litter - 1);
   if (!options.silent) inspect(tile);
   pushUndo(historyBefore);
@@ -5855,7 +5873,7 @@ applyHeroSelection(selectedHero, true);
 const TUTORIAL_STEPS = [
   {
     title: "ようこそ、園長さん",
-    body: `<p>まず難易度を選びます。初めてなら <strong>「初級」</strong> がおすすめです。初期資金と売上が多く、最初の4ラウンドは運営費も大きく軽減されます。</p><p class="tutorial-tip">普通は補正なしの基準、上級は収入・集客・故障管理が厳しくなります。機能やアンロック内容は同じです。</p>`
+    body: `<p>タイトル画面で選んだ難易度を確認できます。初めてなら <strong>「初級」</strong> がおすすめです。建設費と運営費が安く、最初の6ラウンドはさらに強い補助があります。</p><p class="tutorial-tip">普通は平均的な基準、上級は稼働率・仕入れ・維持費から利益率を組み立てる本格経営です。</p>`
   },
   {
     title: "最初は建てすぎない",
@@ -5873,7 +5891,7 @@ const TUTORIAL_STEPS = [
 
 function setDifficulty(mode, options = {}) {
   if (!DIFFICULTY_CONFIGS[mode]) return false;
-  const previous = DIFFICULTY_CONFIGS[state.difficulty] || DIFFICULTY_CONFIGS.beginner;
+  const previous = difficultyConfig();
   const pristine = state.round === 1
     && state.guestsServed === 0
     && Object.values(state.finance).every(value => Number(value || 0) === 0)
@@ -5883,10 +5901,32 @@ function setDifficulty(mode, options = {}) {
     state.money = DIFFICULTY_CONFIGS[mode].initialMoney;
     for (const tile of shopTiles()) tile.object = createShop(tile.object.type);
   }
+  if (options.persist !== false) localStorage.setItem("parkDifficulty", mode);
   renderTutorial();
   computeStats();
   if (!options.silent) toast(`難易度を「${DIFFICULTY_CONFIGS[mode].label}」に設定しました`);
   return true;
+}
+
+function formatCompactCost(cost) {
+  if (cost < 1000) return `$${cost.toLocaleString()}`;
+  return `$${(cost / 1000).toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}k`;
+}
+
+function renderDifficultySelection() {
+  const difficulty = difficultyConfig();
+  document.querySelectorAll("[data-difficulty]").forEach(button => {
+    button.classList.toggle("active", button.dataset.difficulty === state.difficulty);
+  });
+  ui.titleDifficultyDetail.textContent = difficulty.detail;
+  document.querySelectorAll("[data-tool]").forEach(button => {
+    const tool = tools[button.dataset.tool];
+    if (!tool || button.dataset.tool === "inspect" || button.dataset.tool === "remove") return;
+    const cost = difficultyBuildCost(tool);
+    button.dataset.buildCost = String(cost);
+    const textNode = Array.from(button.childNodes || []).find(node => node.nodeType === 3 && node.nodeValue.trim());
+    if (textNode) textNode.nodeValue = formatCompactCost(cost);
+  });
 }
 
 function renderTutorial() {
@@ -5899,9 +5939,7 @@ function renderTutorial() {
   ui.difficultyPicker.hidden = tutorialStep !== 0;
   ui.tutorialBackBtn.disabled = tutorialStep === 0;
   ui.tutorialNextBtn.textContent = tutorialStep === TUTORIAL_STEPS.length - 1 ? "開園する" : "次へ";
-  document.querySelectorAll("[data-difficulty]").forEach(button => {
-    button.classList.toggle("active", button.dataset.difficulty === state.difficulty);
-  });
+  renderDifficultySelection();
 }
 
 function openTutorial(step = 0) {
@@ -6641,6 +6679,13 @@ function loop(now) {
   drawWorld();
   requestAnimationFrame(loop);
 }
+const preferredDifficulty = localStorage.getItem("parkDifficulty");
+if (DIFFICULTY_CONFIGS[preferredDifficulty] && preferredDifficulty !== state.difficulty) {
+  state.difficulty = preferredDifficulty;
+  state.money = difficultyConfig().initialMoney;
+  for (const tile of shopTiles()) tile.object = createShop(tile.object.type);
+}
+renderDifficultySelection();
 restoreProgressionState(null);
 renderGuestLog();
 updateUndoButton();
@@ -6907,7 +6952,9 @@ window.parkDebug = {
   difficultyArrivalFactor,
   difficultyWearFactor,
   difficultyFailureFactor,
+  difficultyBuildCost,
   setDifficulty,
+  renderDifficultySelection,
   openTutorial,
   closeTutorial,
   adjustStaff,

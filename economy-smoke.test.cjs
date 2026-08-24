@@ -55,6 +55,11 @@ const toolButtons = new Map(toolNames.map(name => {
   button.dataset.tool = name;
   return [name, button];
 }));
+const difficultyButtons = new Map(["beginner", "standard", "challenge"].map(mode => {
+  const button = new MockElement();
+  button.dataset.difficulty = mode;
+  return [mode, button];
+}));
 
 const storage = new Map();
 const math = Object.create(Math);
@@ -84,6 +89,7 @@ const sandbox = {
     },
     querySelectorAll(selector) {
       if (selector === "[data-tool]") return [...toolButtons.values()];
+      if (selector === "[data-difficulty]") return [...difficultyButtons.values()];
       return [];
     },
     addEventListener() {}
@@ -101,6 +107,15 @@ assert.ok(fs.statSync("assets/opening-theme.mp3").size < 600000, "the opening lo
 assert.equal(debug.summary().titleScreenActive, true);
 assert.equal(debug.summary().openingMusicAvailable, false, "the non-browser test sandbox should leave media probing disabled");
 assert.equal(element("titleMusicBtn").hidden, true);
+assert.equal(state.money, 50000);
+difficultyButtons.get("standard").click();
+assert.equal(state.difficulty, "standard");
+assert.equal(state.money, 28000);
+assert.match(element("titleDifficultyDetail").textContent, /平均バランス/);
+difficultyButtons.get("beginner").click();
+assert.equal(state.difficulty, "beginner");
+assert.equal(state.money, 50000);
+assert.match(element("titleDifficultyDetail").textContent, /のびのび開発/);
 const guestsBeforeTitleStart = state.guests.length;
 debug.update(10);
 assert.equal(state.guests.length, guestsBeforeTitleStart, "the park simulation should wait on the title screen");
@@ -115,15 +130,18 @@ for (let i = 0; i < 4; i++) element("tutorialNextBtn").click();
 assert.equal(element("tutorialOverlay").hidden, true);
 assert.equal(storage.get("yumeshimaParkTutorialV1"), "1");
 assert.equal(state.difficulty, "beginner");
-assert.equal(state.money, 36000);
-assert.equal(debug.difficultyCostFactor(), .62 * .55);
-assert.equal(debug.difficultyRevenue(25), 31);
-assert.equal(debug.difficultyArrivalFactor(), .86);
-assert.equal(debug.difficultyWearFactor(), .68);
-assert.equal(debug.difficultyFailureFactor(), .55);
+assert.equal(state.money, 50000);
+assert.equal(debug.difficultyCostFactor(), .45 * .45);
+assert.equal(debug.difficultyRevenue(25), 35);
+assert.equal(debug.difficultyArrivalFactor(), .74);
+assert.equal(debug.difficultyWearFactor(), .45);
+assert.equal(debug.difficultyFailureFactor(), .3);
+assert.equal(debug.difficultyBuildCost("path"), 50);
+assert.equal(debug.shopUnitCost({ type: "kiosk" }), 2);
+assert.equal(debug.shopPriceTolerance({ hunger: 55, priceSensitivity: 1 }, { type: "kiosk" }), 10);
 assert.equal(element("difficultyLabel").textContent, "初級");
-assert.match(element("subsidyStatus").textContent, /運営費 66%軽減・売上 \+25%/);
-assert.equal(state.tiles.find(tile => tile.object?.type === "kiosk").object.maxStock, 72);
+assert.match(element("subsidyStatus").textContent, /運営費 80%軽減・売上 \+40%/);
+assert.equal(state.tiles.find(tile => tile.object?.type === "kiosk").object.maxStock, 100);
 assert.equal(debug.operatingCostBreakdown().baseTotal, 163, "starter shop staffing should be the only new base cost");
 assert.equal(debug.operatingCostBreakdown().shopStaff, 18 * debug.difficultyCostFactor());
 const starterShop = state.tiles.find(tile => tile.object?.type === "kiosk").object;
@@ -168,7 +186,7 @@ assert.equal(debug.startSeasonalEvent({ silent: true }), true);
 assert.equal(state.money, moneyBeforeSeasonEvent - 700);
 assert.equal(state.finance.eventExpenses, 700);
 assert.equal(debug.activeSeasonalEvent().label, "桜フェス");
-assert.deepEqual({ ...debug.seasonalChallengeTargets() }, { guests: 13, rides: 5, shopSales: 4, synergy: 10, shopKind: "souvenir" });
+assert.deepEqual({ ...debug.seasonalChallengeTargets() }, { guests: 12, rides: 5, shopSales: 3, synergy: 10, shopKind: "souvenir" });
 assert.equal(state.seasonalEvent.challenge.plannedRounds, 2);
 assert.equal(debug.seasonalRideAvailable("flower_swing"), true);
 assert.equal(debug.seasonalRideAvailable("cherry_tree"), true);
@@ -254,28 +272,34 @@ assert.equal(debug.summary().selectedTool, "drink_stand");
 debug.setTool("inspect");
 state.guests.pop();
 debug.setDifficulty("standard", { silent: true });
-assert.equal(state.money, 24000);
-assert.equal(debug.difficultyCostFactor(), .85);
+assert.equal(state.money, 28000);
+assert.equal(debug.difficultyCostFactor(), 1);
 assert.equal(debug.difficultyRevenue(25), 25);
 assert.equal(debug.difficultyArrivalFactor(), 1);
 assert.equal(debug.difficultyWearFactor(), 1);
 assert.equal(debug.difficultyFailureFactor(), 1);
+assert.equal(debug.difficultyBuildCost("path"), 80);
+assert.equal(debug.shopUnitCost({ type: "kiosk" }), 3);
+assert.equal(debug.shopPriceTolerance({ hunger: 55, priceSensitivity: 1 }, { type: "kiosk" }), 8);
 assert.equal(element("difficultyLabel").textContent, "普通");
-assert.match(element("subsidyStatus").textContent, /運営費 15%軽減・売上 基準/);
-assert.equal(state.tiles.find(tile => tile.object?.type === "kiosk").object.maxStock, 45);
+assert.match(element("subsidyStatus").textContent, /運営費 基準・売上 基準/);
+assert.equal(state.tiles.find(tile => tile.object?.type === "kiosk").object.maxStock, 60);
 debug.setDifficulty("challenge", { silent: true });
-assert.equal(state.money, 16000);
-assert.equal(debug.difficultyCostFactor(), 1.25);
-assert.equal(debug.difficultyRevenue(25), 23);
-assert.equal(debug.difficultyArrivalFactor(), 1.15);
-assert.equal(debug.difficultyWearFactor(), 1.3);
-assert.equal(debug.difficultyFailureFactor(), 1.4);
+assert.equal(state.money, 18000);
+assert.equal(debug.difficultyCostFactor(), 1.15);
+assert.equal(debug.difficultyRevenue(25), 25);
+assert.equal(debug.difficultyArrivalFactor(), 1.08);
+assert.equal(debug.difficultyWearFactor(), 1.2);
+assert.equal(debug.difficultyFailureFactor(), 1.25);
+assert.equal(debug.difficultyBuildCost("path"), 90);
+assert.equal(debug.shopUnitCost({ type: "kiosk" }), 4);
+assert.equal(debug.shopPriceTolerance({ hunger: 55, priceSensitivity: 1 }, { type: "kiosk" }), 7);
 assert.equal(element("difficultyLabel").textContent, "上級");
-assert.match(element("subsidyStatus").textContent, /運営費 \+25%・売上 -10%/);
-assert.equal(state.tiles.find(tile => tile.object?.type === "kiosk").object.maxStock, 30);
+assert.match(element("subsidyStatus").textContent, /運営費 \+15%・売上 基準/);
+assert.equal(state.tiles.find(tile => tile.object?.type === "kiosk").object.maxStock, 42);
 debug.setDifficulty("beginner", { silent: true });
-assert.equal(state.money, 36000);
-assert.equal(state.tiles.find(tile => tile.object?.type === "kiosk").object.maxStock, 72);
+assert.equal(state.money, 50000);
+assert.equal(state.tiles.find(tile => tile.object?.type === "kiosk").object.maxStock, 100);
 
 const warningDiagnosis = debug.roundReportDiagnosis({
   difficulty: "beginner",
@@ -322,7 +346,7 @@ const beginnerOpeningMoney = state.money;
 math.random = () => .5;
 for (let i = 0; i < 1800; i++) debug.update(.05);
 assert.ok(state.money > beginnerOpeningMoney - 1000, "beginner parks should not collapse during the first 90 seconds");
-assert.ok(state.money > 35000, "beginner parks should retain a useful construction reserve");
+assert.ok(state.money >= beginnerOpeningMoney, "beginner parks should earn while retaining a large construction reserve");
 math.random = () => 0;
 debug.loadGame();
 assert.equal(state.money, beginnerOpeningMoney);
@@ -348,7 +372,7 @@ assert.equal(debug.spawnGuestAt(state.tiles.find(tile => tile.x === 2 && tile.y 
 const marketedGuest = state.guests[state.guests.length - 1];
 assert.equal(marketedGuest.archetype, "thrill");
 assert.equal(marketedGuest.campaignType, "thrill");
-assert.ok(marketedGuest.satisfaction < 66, "a poor audience fit should lower initial satisfaction");
+assert.ok(marketedGuest.satisfaction < 74, "a poor audience fit should still lower beginner satisfaction");
 assert.equal(state.marketing.attractedGuests, 1);
 assert.equal(state.marketing.remainingLeads, 18);
 
@@ -445,20 +469,20 @@ managedRide.queue = [];
 
 debug.buildAt(9, 11, "kiosk");
 const kiosk = state.tiles.find(tile => tile.x === 9 && tile.y === 11).object;
-assert.equal(kiosk.stock, 72);
+assert.equal(kiosk.stock, 100);
 kiosk.stock = 5;
 debug.inspect(state.tiles.find(tile => tile.object === kiosk));
 const beforeRestock = state.money;
 debug.restockSelectedKiosk();
-assert.equal(kiosk.stock, 72);
-assert.equal(beforeRestock - state.money, 268);
-assert.equal(state.finance.restockExpenses, 268);
+assert.equal(kiosk.stock, 100);
+assert.equal(beforeRestock - state.money, 285);
+assert.equal(state.finance.restockExpenses, 285);
 
 kiosk.stock = 10;
 const beforeAutoOrder = state.money;
 debug.update(.05);
 assert.equal(kiosk.pendingStock, 30);
-assert.equal(beforeAutoOrder - state.money, 90);
+assert.equal(beforeAutoOrder - state.money, 60);
 assert.equal(kiosk.orders, 1);
 for (let i = 0; i < 161; i++) debug.update(.05);
 assert.equal(kiosk.pendingStock, 0);
@@ -484,7 +508,7 @@ assert.equal(debug.adjustSelectedShopStaff(1), true);
 assert.equal(kiosk.staff, 2);
 assert.equal(moneyBeforeShopHire - state.money, 180);
 assert.equal(state.finance.staffExpenses - staffExpensesBeforeShopHire, 180);
-assert.equal(debug.operatingCostBreakdown().shopStaff, shopStaffCostBeforeHire + 18 * debug.difficultyCostFactor());
+assert.ok(Math.abs(debug.operatingCostBreakdown().shopStaff - (shopStaffCostBeforeHire + 18 * debug.difficultyCostFactor())) < 1e-9);
 const staffedShopCost = debug.operatingCostBreakdown().shopStaff;
 assert.equal(debug.toggleSelectedShopOpen(), true);
 assert.equal(kiosk.open, false);
@@ -505,7 +529,7 @@ const upgradeCost = debug.shopUpgradeCost(kiosk);
 const moneyBeforeUpgrade = state.money;
 assert.equal(debug.upgradeSelectedShop(), true);
 assert.equal(kiosk.level, 2);
-assert.equal(kiosk.maxStock, 86);
+assert.equal(kiosk.maxStock, 120);
 assert.equal(moneyBeforeUpgrade - state.money, upgradeCost);
 assert.ok(kiosk.reputation > 65);
 
@@ -566,7 +590,7 @@ assert.equal(debug.buyFromShop(hungryFoodie, kiosk), true, "hungry foodies shoul
 assert.equal(kiosk.stock, stockBeforePriceRefusal - 1);
 assert.equal(kiosk.visits, 2);
 assert.equal(kiosk.sales, 1);
-assert.equal(kiosk.revenue, 11);
+assert.equal(kiosk.revenue, 13);
 assert.ok(kiosk.supplyCost > 0);
 const shopPerformanceBeforeSave = debug.shopPerformance(kiosk);
 assert.equal(shopPerformanceBeforeSave.conversion, .5);
@@ -579,15 +603,15 @@ debug.buildAt(9, 10, "souvenir_shop");
 const drinkStand = state.tiles.find(tile => tile.x === 7 && tile.y === 12).object;
 const souvenirShop = state.tiles.find(tile => tile.x === 9 && tile.y === 10).object;
 assert.equal(drinkStand.type, "drink_stand");
-assert.equal(drinkStand.maxStock, 86);
+assert.equal(drinkStand.maxStock, 120);
 assert.equal(drinkStand.price, 6);
 assert.equal(debug.shopDeliverySize(drinkStand), 36);
 assert.equal(debug.shopUnitCost(drinkStand), 2);
 assert.equal(souvenirShop.type, "souvenir_shop");
-assert.equal(souvenirShop.maxStock, 54);
+assert.equal(souvenirShop.maxStock, 75);
 assert.equal(souvenirShop.price, 14);
 assert.equal(debug.shopDeliverySize(souvenirShop), 20);
-assert.equal(debug.shopUnitCost(souvenirShop), 6);
+assert.equal(debug.shopUnitCost(souvenirShop), 4);
 
 const guestsBeforeDemandTest = state.guests;
 state.guests = Array.from({ length: 4 }, () => ({
@@ -624,7 +648,7 @@ assert.equal(debug.chooseShop(thirstyGuest, "drink").tile.object, drinkStand);
 assert.equal(debug.buyFromShop(thirstyGuest, drinkStand), true);
 assert.equal(thirstyGuest.purchases.drink, true);
 assert.ok(thirstyGuest.thirst < 30);
-assert.equal(drinkStand.stock, 85);
+assert.equal(drinkStand.stock, 119);
 
 const souvenirGuest = {
   tile: state.tiles.find(tile => tile.x === 8 && tile.y === 10),
@@ -644,7 +668,7 @@ assert.equal(debug.chooseShop(souvenirGuest, "souvenir").tile.object, souvenirSh
 assert.equal(debug.buyFromShop(souvenirGuest, souvenirShop), true);
 assert.equal(souvenirGuest.purchases.souvenir, true);
 assert.ok(souvenirGuest.souvenirDesire < 20);
-assert.equal(souvenirShop.stock, 53);
+assert.equal(souvenirShop.stock, 74);
 const finalShopRevenue = state.finance.shopRevenue;
 debug.saveGame();
 state.admissionFee = 1;
@@ -659,7 +683,7 @@ assert.equal(loadedKiosk.autoRestock, true);
 assert.equal(loadedKiosk.open, true);
 assert.equal(loadedKiosk.staff, 2);
 assert.equal(loadedKiosk.level, 2);
-assert.equal(loadedKiosk.maxStock, 86);
+assert.equal(loadedKiosk.maxStock, 120);
 assert.ok(loadedKiosk.reputation > 65);
 const loadedManagedRide = state.tiles.find(tile => tile.object?.type === "carousel").object;
 assert.equal(loadedManagedRide.open, true);
@@ -672,15 +696,15 @@ assert.equal(loadedKiosk.priceRejects, 1);
 assert.equal(loadedKiosk.recentPriceRejects, 1);
 assert.equal(loadedKiosk.recentToleranceWeight, 2);
 assert.equal(loadedKiosk.recentToleranceTotal, savedRecentToleranceTotal);
-assert.equal(loadedKiosk.revenue, 11);
+assert.equal(loadedKiosk.revenue, 13);
 assert.equal(loadedKiosk.supplyCost, savedSupplyCost);
 const loadedDrinkStand = state.tiles.find(tile => tile.object?.type === "drink_stand").object;
 const loadedSouvenirShop = state.tiles.find(tile => tile.object?.type === "souvenir_shop").object;
-assert.equal(loadedDrinkStand.maxStock, 86);
-assert.equal(loadedDrinkStand.stock, 85);
+assert.equal(loadedDrinkStand.maxStock, 120);
+assert.equal(loadedDrinkStand.stock, 119);
 assert.equal(loadedDrinkStand.sales, 1);
-assert.equal(loadedSouvenirShop.maxStock, 54);
-assert.equal(loadedSouvenirShop.stock, 53);
+assert.equal(loadedSouvenirShop.maxStock, 75);
+assert.equal(loadedSouvenirShop.stock, 74);
 assert.equal(loadedSouvenirShop.sales, 1);
 
 state.finance.admissionRevenue = 500;
@@ -1137,7 +1161,7 @@ assert.equal(state.tiles.find(tile => tile.x === 11 && tile.y === 7).transitTrac
 
 const followupReport = debug.settleRound();
 assert.equal(followupReport.goalReward, 2600, "newly active achievements should pay once");
-assert.equal(followupReport.ratingBonus, 0);
+assert.ok(followupReport.ratingBonus > 0, "a profitable beginner round should receive a rating reward");
 debug.closeRoundReport();
 
 const moneyBeforeEmptyRound = state.money;
@@ -1215,7 +1239,7 @@ assert.ok(state.expansion.unlockedZoneIds.includes("east"), "legacy saves should
 assert.equal(state.seasonalEvent.challenge, null);
 assert.deepEqual({ ...state.seasonalEvent.bestRanks }, {}, "legacy saves should initialize seasonal challenge records");
 const migratedKiosk = state.tiles.find(tile => tile.object?.type === "kiosk").object;
-assert.equal(migratedKiosk.maxStock, 72, "legacy beginner shops should receive the larger capacity");
+assert.equal(migratedKiosk.maxStock, 100, "legacy beginner shops should receive the larger capacity");
 assert.equal(migratedKiosk.autoRestock, true);
 assert.equal(migratedKiosk.visits, 0);
 assert.equal(migratedKiosk.priceRejects, 0);

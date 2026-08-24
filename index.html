@@ -16,12 +16,22 @@
         <h1>ゆめじまパーク</h1>
         <p>夢を建て、笑顔を運ぶ。</p>
       </div>
-      <div class="title-actions">
-        <button id="titleStartBtn" class="title-start" type="button">
-          <span aria-hidden="true">▶</span>
-          <b>パークを開く</b>
-        </button>
-        <button id="titleMusicBtn" class="title-music" type="button" aria-label="オープニング曲を再生" title="オープニング曲を再生" hidden>♪</button>
+      <div class="title-launch">
+        <section class="title-difficulty" aria-label="難易度選択">
+          <div class="title-difficulty-options">
+            <button data-difficulty="beginner" class="active" type="button"><b>初級</b><small>$50,000<br>建設 -35%・売上 +40%</small></button>
+            <button data-difficulty="standard" type="button"><b>普通</b><small>$28,000<br>補正なしの平均経営</small></button>
+            <button data-difficulty="challenge" type="button"><b>上級</b><small>$18,000<br>建設 +10%・運営 +15%</small></button>
+          </div>
+          <p id="titleDifficultyDetail">のびのび開発・運営費55%軽減・食事も売れやすい</p>
+        </section>
+        <div class="title-actions">
+          <button id="titleStartBtn" class="title-start" type="button">
+            <span aria-hidden="true">▶</span>
+            <b>パークを開く</b>
+          </button>
+          <button id="titleMusicBtn" class="title-music" type="button" aria-label="オープニング曲を再生" title="オープニング曲を再生" hidden>♪</button>
+        </div>
       </div>
     </section>
     <audio id="openingMusic" preload="none" loop></audio>
@@ -324,7 +334,7 @@
         </div>
         <div class="difficulty-status">
           <span id="difficultyLabel">初級</span>
-          <b id="subsidyStatus">運営費 66%軽減・売上 +25%</b>
+          <b id="subsidyStatus">運営費 80%軽減・売上 +40%</b>
         </div>
         <p id="financeHint" class="finance-hint">まずは既存設備のままゲストの動きを観察しましょう。</p>
       </section>
@@ -446,9 +456,9 @@
         <div class="tutorial-progress" aria-hidden="true"><i id="tutorialProgress"></i></div>
         <div id="tutorialBody" class="tutorial-body"></div>
         <div id="difficultyPicker" class="difficulty-picker" aria-label="難易度選択">
-          <button data-difficulty="beginner" class="active"><b>初級</b><small>$36,000<br>売上+25%・運営費-38%<br>4ラウンド強力補助<br>来園増・故障しにくい</small></button>
-          <button data-difficulty="standard"><b>普通</b><small>$24,000<br>売上・通常運営費は基準<br>初回だけ運営費-15%<br>標準バランス</small></button>
-          <button data-difficulty="challenge"><b>上級</b><small>$16,000<br>売上-10%・運営費+25%<br>来園減・故障しやすい</small></button>
+          <button data-difficulty="beginner" class="active"><b>初級</b><small>$50,000<br>建設-35%・売上+40%<br>通常運営費-55%<br>6ラウンド強力補助</small></button>
+          <button data-difficulty="standard"><b>普通</b><small>$28,000<br>売上・建設・運営費は基準<br>平均的な経営バランス</small></button>
+          <button data-difficulty="challenge"><b>上級</b><small>$18,000<br>建設+10%・運営費+15%<br>仕入れと故障管理が重要</small></button>
         </div>
         <div class="tutorial-actions">
           <button id="tutorialBackBtn">戻る</button>

@@ -66,15 +66,42 @@ canvas:active { cursor: grabbing; }
 
 .title-copy h1 { margin: 0; font-size: 72px; line-height: 1; letter-spacing: 0; }
 .title-copy p { margin: 12px 0 0; font-size: 18px; font-weight: 900; letter-spacing: 0; }
-.title-actions {
+.title-launch {
   position: absolute;
   left: 50%;
-  bottom: 7vh;
+  bottom: 4vh;
+  width: min(620px, calc(100vw - 32px));
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  transform: translateX(-50%);
+  animation: title-actions-in .7s .35s ease-out both;
+}
+
+.title-difficulty { width: 100%; color: #fff; text-align: center; text-shadow: 0 2px 8px rgba(20, 46, 56, .55); }
+.title-difficulty-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.title-difficulty-options button {
+  min-width: 0;
+  min-height: 66px;
+  padding: 8px 7px;
+  border: 2px solid rgba(255, 247, 223, .82);
+  border-radius: 6px;
+  color: #fff;
+  background: rgba(31, 78, 89, .82);
+  box-shadow: 0 5px 14px rgba(22, 52, 62, .24);
+}
+.title-difficulty-options button:hover { background: rgba(40, 121, 132, .92); transform: translateY(-1px); }
+.title-difficulty-options button.active { border-color: #fff7df; background: #e85f54; box-shadow: 0 4px 0 #9e403c, 0 10px 20px rgba(29, 55, 61, .28); }
+.title-difficulty-options b,
+.title-difficulty-options small { display: block; }
+.title-difficulty-options b { font-size: 13px; }
+.title-difficulty-options small { margin-top: 3px; font-size: 8px; line-height: 1.35; }
+.title-difficulty p { min-height: 14px; margin: 8px 0 0; font-size: 10px; font-weight: 900; }
+
+.title-actions {
   display: flex;
   align-items: center;
   gap: 10px;
-  transform: translateX(-50%);
-  animation: title-actions-in .7s .35s ease-out both;
 }
 
 .title-start {
@@ -1723,7 +1750,11 @@ details img {
   .title-copy { top: 5vh; }
   .title-copy h1 { font-size: 44px; }
   .title-copy p { margin-top: 8px; font-size: 14px; }
-  .title-actions { bottom: 6vh; }
+  .title-launch { bottom: 3vh; gap: 9px; }
+  .title-difficulty-options button { min-height: 60px; padding: 7px 4px; }
+  .title-difficulty-options b { font-size: 11px; }
+  .title-difficulty-options small { font-size: 7px; }
+  .title-difficulty p { margin-top: 6px; font-size: 8px; }
   .title-start { min-width: 214px; min-height: 54px; font-size: 15px; }
   .game-music-btn { position: absolute; top: 10px; right: 10px; }
   .topbar { align-items: stretch; flex-direction: column; }
@@ -1737,9 +1768,19 @@ details img {
   .zoom-controls { left: 16px; right: auto; }
 }
 
+@media (max-height: 650px) {
+  .title-copy { top: 3vh; }
+  .title-copy h1 { font-size: 38px; }
+  .title-copy p { display: none; }
+  .title-launch { bottom: 2vh; gap: 6px; }
+  .title-difficulty-options button { min-height: 52px; padding-block: 5px; }
+  .title-difficulty p { margin-top: 4px; }
+  .title-start { min-height: 46px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .title-screen > img,
   .title-copy,
-  .title-actions { animation: none; }
+  .title-launch { animation: none; }
   .title-screen { transition-duration: .01s; }
 }
