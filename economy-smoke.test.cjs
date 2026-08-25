@@ -141,6 +141,7 @@ assert.equal(debug.difficultyFailureFactor(), .18);
 assert.equal(debug.difficultyBuildCost("path"), 45);
 assert.equal(debug.shopUnitCost({ type: "kiosk" }), 2);
 assert.equal(debug.shopPriceTolerance({ hunger: 55, priceSensitivity: 1 }, { type: "kiosk" }), 11);
+assert.equal(debug.shopPriceFlexibility(), 2);
 assert.equal(element("difficultyLabel").textContent, "初級");
 assert.match(element("subsidyStatus").textContent, /運営費 88%軽減・売上 \+55%/);
 assert.equal(state.tiles.find(tile => tile.object?.type === "kiosk").object.maxStock, 100);
@@ -357,6 +358,7 @@ assert.equal(debug.difficultyFailureFactor(), 1);
 assert.equal(debug.difficultyBuildCost("path"), 80);
 assert.equal(debug.shopUnitCost({ type: "kiosk" }), 3);
 assert.equal(debug.shopPriceTolerance({ hunger: 55, priceSensitivity: 1 }, { type: "kiosk" }), 8);
+assert.equal(debug.shopPriceFlexibility(), 1);
 assert.equal(element("difficultyLabel").textContent, "普通");
 assert.match(element("subsidyStatus").textContent, /運営費 基準・売上 基準/);
 assert.equal(state.tiles.find(tile => tile.object?.type === "kiosk").object.maxStock, 60);
@@ -373,6 +375,7 @@ assert.equal(debug.difficultyFailureFactor(), 1.25);
 assert.equal(debug.difficultyBuildCost("path"), 90);
 assert.equal(debug.shopUnitCost({ type: "kiosk" }), 4);
 assert.equal(debug.shopPriceTolerance({ hunger: 55, priceSensitivity: 1 }, { type: "kiosk" }), 7);
+assert.equal(debug.shopPriceFlexibility(), 0);
 assert.equal(element("difficultyLabel").textContent, "上級");
 assert.match(element("subsidyStatus").textContent, /運営費 \+15%・売上 基準/);
 assert.equal(state.tiles.find(tile => tile.object?.type === "kiosk").object.maxStock, 42);
@@ -648,6 +651,7 @@ const stockBeforePriceRefusal = kiosk.stock;
 assert.equal(debug.buyFromShop(costlyMealGuest, kiosk), false, "price-sensitive guests should reject an expensive meal");
 assert.equal(kiosk.stock, stockBeforePriceRefusal);
 assert.equal(kiosk.priceRejects, 1);
+assert.ok(costlyMealGuest.satisfaction > 69, "beginner price complaints should have a gentler satisfaction penalty");
 assert.ok(debug.shopPriceTolerance(costlyMealGuest) < kiosk.price);
 assert.equal(kiosk.recentPriceRejects, 1);
 assert.equal(kiosk.recentToleranceWeight, 1);
@@ -663,6 +667,21 @@ assert.equal(debug.applySelectedShopRecommendedPrice(), true);
 assert.equal(kiosk.price, recommendedMealPrice);
 assert.equal(debug.shopPricingDiagnosis(kiosk).status, "fair");
 assert.match(debug.shopPerformance(kiosk).insight, /推奨価格/);
+const budgetLimitedGuest = {
+  spent: false,
+  budget: 5,
+  hunger: 82,
+  archetype: "foodie",
+  priceSensitivity: .8,
+  satisfaction: 72,
+  thoughtCooldown: 0
+};
+kiosk.price = 9;
+const rejectsBeforeBudgetWalkaway = kiosk.priceRejects;
+assert.equal(debug.buyFromShop(budgetLimitedGuest, kiosk), false);
+assert.equal(kiosk.priceRejects, rejectsBeforeBudgetWalkaway, "a spent budget should not be counted as an overpriced product");
+assert.equal(budgetLimitedGuest.thought.short, "今回は見送る");
+assert.equal(budgetLimitedGuest.thought.tone, "neutral");
 const hungryFoodie = {
   spent: false,
   budget: 50,
@@ -675,12 +694,12 @@ const hungryFoodie = {
 kiosk.price = 9;
 assert.equal(debug.buyFromShop(hungryFoodie, kiosk), true, "hungry foodies should accept a fair meal price");
 assert.equal(kiosk.stock, stockBeforePriceRefusal - 1);
-assert.equal(kiosk.visits, 2);
+assert.equal(kiosk.visits, 3);
 assert.equal(kiosk.sales, 1);
 assert.equal(kiosk.revenue, 14);
 assert.ok(kiosk.supplyCost > 0);
 const shopPerformanceBeforeSave = debug.shopPerformance(kiosk);
-assert.equal(shopPerformanceBeforeSave.conversion, .5);
+assert.equal(shopPerformanceBeforeSave.conversion, 1 / 3);
 assert.equal(shopPerformanceBeforeSave.grossProfit, kiosk.revenue - kiosk.supplyCost);
 const savedShopStock = kiosk.stock;
 const savedSupplyCost = kiosk.supplyCost;
@@ -778,10 +797,10 @@ assert.equal(loadedManagedRide.level, 2);
 assert.equal(loadedManagedRide.popularity, 61);
 assert.equal(loadedManagedRide.maintenancePolicy, "balanced");
 assert.equal(debug.rideCapacity(loadedManagedRide), 9);
-assert.equal(loadedKiosk.visits, 2);
+assert.equal(loadedKiosk.visits, 3);
 assert.equal(loadedKiosk.priceRejects, 1);
 assert.equal(loadedKiosk.recentPriceRejects, 1);
-assert.equal(loadedKiosk.recentToleranceWeight, 2);
+assert.equal(loadedKiosk.recentToleranceWeight, 3);
 assert.equal(loadedKiosk.recentToleranceTotal, savedRecentToleranceTotal);
 assert.equal(loadedKiosk.revenue, 14);
 assert.equal(loadedKiosk.supplyCost, savedSupplyCost);

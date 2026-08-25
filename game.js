@@ -271,6 +271,7 @@ const DIFFICULTY_CONFIGS = {
     label: "初級", detail: "安心経営・初期資金と売上が多く清潔さも安定",
     initialMoney: 60000, costMultiplier: .35, graceRounds: 8, graceMultiplier: .35,
     revenueMultiplier: 1.55, buildCostMultiplier: .55, shopSupplyMultiplier: .5, shopToleranceBonus: 4,
+    shopPriceFlexibility: 2, priceSensitivityMultiplier: .9, priceComplaintPenalty: .55, rideToleranceBonus: 2,
     arrivalMultiplier: .64, guestCapBonus: 18, refusalMultiplier: .2,
     wearMultiplier: .3, failureMultiplier: .18, satisfactionBonus: 11, challengeMultiplier: .65,
     cleanlinessMultiplier: .42, starterGarbageTrucks: 1
@@ -279,6 +280,7 @@ const DIFFICULTY_CONFIGS = {
     label: "普通", detail: "平均バランス・売上と費用を見ながら素直に成長",
     initialMoney: 28000, costMultiplier: 1, graceRounds: 0, graceMultiplier: 1,
     revenueMultiplier: 1, buildCostMultiplier: 1, shopSupplyMultiplier: 1, shopToleranceBonus: 1,
+    shopPriceFlexibility: 1, priceSensitivityMultiplier: .96, priceComplaintPenalty: .75, rideToleranceBonus: 1,
     arrivalMultiplier: 1, guestCapBonus: 0, refusalMultiplier: 1,
     wearMultiplier: 1, failureMultiplier: 1, satisfactionBonus: 0, challengeMultiplier: 1,
     cleanlinessMultiplier: .78, starterGarbageTrucks: 0
@@ -287,6 +289,7 @@ const DIFFICULTY_CONFIGS = {
     label: "上級", detail: "本格経営・稼働率、仕入れ、維持費から利益率を設計",
     initialMoney: 18000, costMultiplier: 1.15, graceRounds: 0, graceMultiplier: 1,
     revenueMultiplier: 1, buildCostMultiplier: 1.1, shopSupplyMultiplier: 1.15, shopToleranceBonus: 0,
+    shopPriceFlexibility: 0, priceSensitivityMultiplier: 1, priceComplaintPenalty: 1, rideToleranceBonus: 0,
     arrivalMultiplier: 1.08, guestCapBonus: -2, refusalMultiplier: 1.1,
     wearMultiplier: 1.2, failureMultiplier: 1.25, satisfactionBonus: -1, challengeMultiplier: 1.15,
     cleanlinessMultiplier: 1.12, starterGarbageTrucks: 0
@@ -3900,7 +3903,7 @@ function spawnGuestAt(startTile) {
     repeater,
     spent: false,
     budget: (archetype === "family" ? 48 : 28) + Math.random() * 54 + (repeater ? 12 : 0),
-    priceSensitivity: .65 + Math.random() * .8,
+    priceSensitivity: (.65 + Math.random() * .8) * difficultyConfig().priceSensitivityMultiplier,
     hunger: (archetype === "foodie" ? 52 : 24) + (conditionType === "holiday" ? 5 : 0) + Math.random() * 18,
     thirst: (archetype === "thrill" ? 38 : 22) + (conditionType === "heatwave" ? 14 : 0) + Math.random() * 20,
     souvenirDesire: (archetype === "scenic" || archetype === "family" ? 24 : 12) + (conditionType === "holiday" ? 16 : 0) + Math.random() * 18,
@@ -4165,7 +4168,8 @@ function chooseShop(guest, preferredKind = null) {
       staff: Math.max(1, Number(tile.object.staff || 1)),
       reputation: clamp(Number(tile.object.reputation ?? SHOP_MANAGEMENT_CONFIG.startingReputation), 0, 100),
       stockRatio: Number(tile.object.stock || 0) / Math.max(1, Number(tile.object.maxStock || shopCapacityForDifficulty())),
-      pricePressure: Number(tile.object.price ?? tools[tile.object.type].defaultPrice) / Math.max(1, shopPriceTolerance(guest, tile.object))
+      pricePressure: Number(tile.object.price ?? tools[tile.object.type].defaultPrice)
+        / Math.max(1, shopPriceTolerance(guest, tile.object) + shopPriceFlexibility(guest, tile.object))
     }))
     .filter(choice => choice.pathTile && (choice.pathTile === guest.tile || findPath(guest.tile, choice.pathTile).length));
   const score = choice => Math.abs(choice.tile.x - guest.tile.x) + Math.abs(choice.tile.y - guest.tile.y)
@@ -4194,6 +4198,10 @@ function shopPriceTolerance(guest, shop = { type: "kiosk" }) {
   const themePremium = theme?.id === "market" && landThemeMatchesGuest(theme, guest) ? 2 : 0;
   return clamp(Math.round(tools[shop.type]?.defaultPrice + difficultyConfig().shopToleranceBonus
     + needPremium + archetypePremium + servicePremium + themePremium - sensitivityPenalty), 3, 22);
+}
+
+function shopPriceFlexibility() {
+  return Math.max(0, Number(difficultyConfig().shopPriceFlexibility || 0));
 }
 
 function shopRecommendedPrice(shop) {
@@ -4485,6 +4493,7 @@ function buyFromShop(guest, shop) {
   const stock = Number(shop.stock ?? 0);
   const price = Number(shop.price ?? tools[shop.type].defaultPrice);
   const tolerance = shopPriceTolerance(guest, shop);
+  const acceptablePrice = tolerance + shopPriceFlexibility(guest, shop);
   shop.visits = Number(shop.visits || 0) + 1;
   shop.recentInterest = Number(shop.recentInterest || 0) + 1;
   if (stock <= 0) {
@@ -4498,13 +4507,30 @@ function buyFromShop(guest, shop) {
   }
   shop.recentToleranceTotal = Number(shop.recentToleranceTotal || 0) + tolerance;
   shop.recentToleranceWeight = Number(shop.recentToleranceWeight || 0) + 1;
-  if (price > guest.budget || price > tolerance) {
+  if (price > Number(guest.budget || 0) && price <= acceptablePrice) {
+    guest.shopRejected = shop;
+    guest.satisfaction -= difficultyConfig().priceComplaintPenalty;
+    guestThought(guest, "今日は遊びに予算を使ったので、買い物は次回にしよう", "今回は見送る", "neutral", true);
+    return false;
+  }
+  if (price > acceptablePrice) {
+    const priceGap = price - acceptablePrice;
+    const mild = priceGap <= 2;
+    const penaltyScale = difficultyConfig().priceComplaintPenalty;
     shop.priceRejects = Number(shop.priceRejects || 0) + 1;
     shop.recentPriceRejects = Number(shop.recentPriceRejects || 0) + 1;
-    shop.reputation = clamp(Number(shop.reputation ?? SHOP_MANAGEMENT_CONFIG.startingReputation) - .8, 0, 100);
+    shop.reputation = clamp(Number(shop.reputation ?? SHOP_MANAGEMENT_CONFIG.startingReputation) - (mild ? .25 : .8) * penaltyScale, 0, 100);
     guest.shopRejected = shop;
-    guest.satisfaction -= 5;
-    guestThought(guest, `商品が高い。${tools[shop.type].label}なら $${tolerance} くらいがいい`, `$${tolerance}希望`, "negative", true);
+    guest.satisfaction -= (mild ? 2 : 5) * penaltyScale;
+    guestThought(
+      guest,
+      mild
+        ? `${tools[shop.type].label}は少し予算を超えたので、今回は見送ろう`
+        : `${tools[shop.type].label}は少し高め。$${tolerance}くらいだとうれしい`,
+      mild ? "今回は見送る" : `$${tolerance}ならうれしい`,
+      mild ? "neutral" : "negative",
+      true
+    );
     return false;
   }
   shop.stock--;
@@ -4598,7 +4624,8 @@ function updateRide(ride, dt) {
       guest.patience = 30;
       dropLitter(guest.tile, Math.random() * .55);
       state.guestsServed++;
-      const fairPrice = tools[ride.type].defaultPrice + (Number(ride.level || 1) - 1) * 2;
+      const fairPrice = tools[ride.type].defaultPrice + (Number(ride.level || 1) - 1) * 2
+        + difficultyConfig().rideToleranceBonus;
       const value = clamp(1.5 + (Number(ride.level || 1) - 1) * .18 - Math.max(0, ride.price - fairPrice) * .16, -.8, 1.85);
       state.sentiment = clamp(
         state.sentiment + value,
@@ -7707,6 +7734,7 @@ window.parkDebug = {
   handleShopDemandAction,
   routeGuestToShop,
   shopPriceTolerance,
+  shopPriceFlexibility,
   shopRecommendedPrice,
   shopPricingDiagnosis,
   shopPricingIssues,
