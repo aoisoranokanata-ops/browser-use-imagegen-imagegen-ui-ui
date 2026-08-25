@@ -19,11 +19,11 @@
       <div class="title-launch">
         <section class="title-difficulty" aria-label="難易度選択">
           <div class="title-difficulty-options">
-            <button data-difficulty="beginner" class="active" type="button"><b>初級</b><small>$50,000<br>建設 -35%・売上 +40%</small></button>
+            <button data-difficulty="beginner" class="active" type="button"><b>初級</b><small>$60,000<br>建設 -45%・売上 +55%</small></button>
             <button data-difficulty="standard" type="button"><b>普通</b><small>$28,000<br>補正なしの平均経営</small></button>
             <button data-difficulty="challenge" type="button"><b>上級</b><small>$18,000<br>建設 +10%・運営 +15%</small></button>
           </div>
-          <p id="titleDifficultyDetail">のびのび開発・運営費55%軽減・食事も売れやすい</p>
+          <p id="titleDifficultyDetail">安心経営・初期資金と売上が多く清潔さも安定</p>
         </section>
         <div class="title-actions">
           <button id="titleStartBtn" class="title-start" type="button">
@@ -364,11 +364,25 @@
           <span>価格診断<b id="shopPricingStatus">全店適正</b></span>
           <button id="shopPricingAction" disabled>高値店を確認</button>
         </div>
+        <div class="assistance-panel" aria-label="おまかせ運営">
+          <div class="assistance-heading"><span><b>おまかせ運営</b><small>初級・普通限定</small></span><strong id="assistanceStatus">すべて手動</strong></div>
+          <div class="assistance-options">
+            <button id="autoShopBtn" type="button" aria-pressed="false"><b>売店</b><small>価格・在庫・店員</small></button>
+            <button id="autoRideBtn" type="button" aria-pressed="false"><b>遊具</b><small>料金・稼働・整備</small></button>
+            <button id="autoSatisfactionBtn" type="button" aria-pressed="false"><b>満足度</b><small>清掃・料金・人員</small></button>
+          </div>
+          <p id="assistanceHint">必要な項目だけオンにできます。</p>
+        </div>
         <div class="difficulty-status">
           <span id="difficultyLabel">初級</span>
-          <b id="subsidyStatus">運営費 80%軽減・売上 +40%</b>
+          <b id="subsidyStatus">運営費 88%軽減・売上 +55%</b>
         </div>
         <p id="financeHint" class="finance-hint">まずは既存設備のままゲストの動きを観察しましょう。</p>
+        <div id="profitRecovery" class="profit-recovery" data-status="stable">
+          <div class="profit-recovery-heading"><b>黒字化ナビ</b><strong id="recoveryStatus">収支を観測中</strong></div>
+          <p id="recoveryCause">最初の精算後に、赤字の原因と優先順位を表示します。</p>
+          <div id="recoveryActions" class="recovery-actions"></div>
+        </div>
       </section>
       <section class="staff-panel" aria-label="スタッフ管理">
         <div class="staff-heading">
@@ -389,6 +403,14 @@
             <button id="mechanicMinus" title="整備員を減らす">−</button>
             <b id="mechanicCount">1</b>
             <button id="mechanicPlus" title="整備員を雇う">＋</button>
+          </div>
+        </div>
+        <div class="staff-row sanitation-row">
+          <span><b>ゴミ収集車</b><small>通路を巡回してごみ箱を回収</small></span>
+          <div class="stepper">
+            <button id="garbageTruckMinus" title="ゴミ収集車を減らす">−</button>
+            <b id="garbageTruckCount">1</b>
+            <button id="garbageTruckPlus" title="ゴミ収集車を購入">＋</button>
           </div>
         </div>
         <div class="staff-development" aria-label="スタッフ研修">
@@ -431,6 +453,7 @@
           <span>休憩<b id="benchUses">0</b></span>
           <span>トイレ<b id="toiletUses">0</b></span>
           <span>ごみ回収<b id="binCollected">0</b></span>
+          <span>収集車実績<b id="garbageTruckCollected">0</b></span>
         </div>
       </section>
       <section class="transit-panel" aria-label="公共交通管理">
@@ -499,7 +522,7 @@
         <div class="tutorial-progress" aria-hidden="true"><i id="tutorialProgress"></i></div>
         <div id="tutorialBody" class="tutorial-body"></div>
         <div id="difficultyPicker" class="difficulty-picker" aria-label="難易度選択">
-          <button data-difficulty="beginner" class="active"><b>初級</b><small>$50,000<br>建設-35%・売上+40%<br>通常運営費-55%<br>6ラウンド強力補助</small></button>
+          <button data-difficulty="beginner" class="active"><b>初級</b><small>$60,000<br>建設-45%・売上+55%<br>通常運営費-65%<br>8ラウンド強力補助</small></button>
           <button data-difficulty="standard"><b>普通</b><small>$28,000<br>売上・建設・運営費は基準<br>平均的な経営バランス</small></button>
           <button data-difficulty="challenge"><b>上級</b><small>$18,000<br>建設+10%・運営費+15%<br>仕入れと故障管理が重要</small></button>
         </div>

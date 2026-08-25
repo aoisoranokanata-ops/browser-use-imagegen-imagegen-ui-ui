@@ -75,6 +75,10 @@ const ui = {
   mechanicLevel: document.getElementById("mechanicLevel"),
   mechanicFatigue: document.getElementById("mechanicFatigue"),
   mechanicTraining: document.getElementById("mechanicTraining"),
+  garbageTruckMinus: document.getElementById("garbageTruckMinus"),
+  garbageTruckPlus: document.getElementById("garbageTruckPlus"),
+  garbageTruckCount: document.getElementById("garbageTruckCount"),
+  garbageTruckCollected: document.getElementById("garbageTruckCollected"),
   runningCost: document.getElementById("runningCost"),
   brokenCount: document.getElementById("brokenCount"),
   conditionAverage: document.getElementById("conditionAverage"),
@@ -200,6 +204,15 @@ const ui = {
   difficultyLabel: document.getElementById("difficultyLabel"),
   subsidyStatus: document.getElementById("subsidyStatus"),
   financeHint: document.getElementById("financeHint"),
+  assistanceStatus: document.getElementById("assistanceStatus"),
+  autoShopBtn: document.getElementById("autoShopBtn"),
+  autoRideBtn: document.getElementById("autoRideBtn"),
+  autoSatisfactionBtn: document.getElementById("autoSatisfactionBtn"),
+  assistanceHint: document.getElementById("assistanceHint"),
+  profitRecovery: document.getElementById("profitRecovery"),
+  recoveryStatus: document.getElementById("recoveryStatus"),
+  recoveryCause: document.getElementById("recoveryCause"),
+  recoveryActions: document.getElementById("recoveryActions"),
   tutorialBtn: document.getElementById("tutorialBtn"),
   tutorialOverlay: document.getElementById("tutorialOverlay"),
   tutorialCloseBtn: document.getElementById("tutorialCloseBtn"),
@@ -255,25 +268,28 @@ const LAND_THEMES = {
 };
 const DIFFICULTY_CONFIGS = {
   beginner: {
-    label: "初級", detail: "のびのび開発・運営費55%軽減・食事も売れやすい",
-    initialMoney: 50000, costMultiplier: .45, graceRounds: 6, graceMultiplier: .45,
-    revenueMultiplier: 1.4, buildCostMultiplier: .65, shopSupplyMultiplier: .6, shopToleranceBonus: 3,
-    arrivalMultiplier: .74, guestCapBonus: 14, refusalMultiplier: .35,
-    wearMultiplier: .45, failureMultiplier: .3, satisfactionBonus: 8, challengeMultiplier: .7
+    label: "初級", detail: "安心経営・初期資金と売上が多く清潔さも安定",
+    initialMoney: 60000, costMultiplier: .35, graceRounds: 8, graceMultiplier: .35,
+    revenueMultiplier: 1.55, buildCostMultiplier: .55, shopSupplyMultiplier: .5, shopToleranceBonus: 4,
+    arrivalMultiplier: .64, guestCapBonus: 18, refusalMultiplier: .2,
+    wearMultiplier: .3, failureMultiplier: .18, satisfactionBonus: 11, challengeMultiplier: .65,
+    cleanlinessMultiplier: .42, starterGarbageTrucks: 1
   },
   standard: {
     label: "普通", detail: "平均バランス・売上と費用を見ながら素直に成長",
     initialMoney: 28000, costMultiplier: 1, graceRounds: 0, graceMultiplier: 1,
     revenueMultiplier: 1, buildCostMultiplier: 1, shopSupplyMultiplier: 1, shopToleranceBonus: 1,
     arrivalMultiplier: 1, guestCapBonus: 0, refusalMultiplier: 1,
-    wearMultiplier: 1, failureMultiplier: 1, satisfactionBonus: 0, challengeMultiplier: 1
+    wearMultiplier: 1, failureMultiplier: 1, satisfactionBonus: 0, challengeMultiplier: 1,
+    cleanlinessMultiplier: .78, starterGarbageTrucks: 0
   },
   challenge: {
     label: "上級", detail: "本格経営・稼働率、仕入れ、維持費から利益率を設計",
     initialMoney: 18000, costMultiplier: 1.15, graceRounds: 0, graceMultiplier: 1,
     revenueMultiplier: 1, buildCostMultiplier: 1.1, shopSupplyMultiplier: 1.15, shopToleranceBonus: 0,
     arrivalMultiplier: 1.08, guestCapBonus: -2, refusalMultiplier: 1.1,
-    wearMultiplier: 1.2, failureMultiplier: 1.25, satisfactionBonus: -1, challengeMultiplier: 1.15
+    wearMultiplier: 1.2, failureMultiplier: 1.25, satisfactionBonus: -1, challengeMultiplier: 1.15,
+    cleanlinessMultiplier: 1.12, starterGarbageTrucks: 0
   }
 };
 const SHOP_CONFIG = {
@@ -311,6 +327,7 @@ const STAFF_MANAGEMENT_CONFIG = {
   trainingCosts: { cleaner: 320, mechanic: 440 },
   wages: { cleaner: 35, mechanic: 45 }
 };
+const SANITATION_CONFIG = { vehicleCost: 1800, vehicleRefund: 600, vehicleUpkeep: 18, maxVehicles: 5, speed: 1.8 };
 const MARKETING_CAMPAIGNS = {
   family: { label: "ファミリー", cost: 600, leads: 18, interval: .76, targetShare: .66 },
   thrill: { label: "絶叫ファン", cost: 800, leads: 20, interval: .72, targetShare: .68 },
@@ -543,6 +560,7 @@ let last = performance.now();
 let spawnTimer = 0;
 let incomeTimer = 0;
 let expenseTimer = 0;
+let assistanceTimer = 0;
 let toastTimer = 0;
 let guestSequence = 0;
 let stopSequence = 0;
@@ -611,6 +629,9 @@ const state = {
   staff: { cleaners: 1, mechanics: 1 },
   staffStats: { cleaningJobs: 0, repairJobs: 0 },
   staffAgents: [],
+  sanitation: { vehicles: 1, totalCollected: 0 },
+  garbageTrucks: [],
+  assistance: { shops: false, rides: false, satisfaction: false, adjustments: 0 },
   tiles: [],
   guests: [],
   rides: [],
@@ -1207,6 +1228,7 @@ function drawWorld() {
   drawLandZoneLabels();
   drawTransitRoute();
   drawBuses();
+  drawGarbageTrucks();
   drawMonorails();
   drawParkTrains();
   drawPeople();
@@ -2163,6 +2185,62 @@ function drawBuses() {
     const p = iso(x, y, 9);
     drawBus(p.x, p.y, to.x - from.x, to.y - from.y, bus);
   }
+}
+
+function sanitationRoute() {
+  const start = entrance?.path ? entrance : state.tiles.find(tile => tile.path && isTileUnlocked(tile));
+  if (!start) return [];
+  const route = [];
+  const visited = new Set();
+  const walk = tile => {
+    visited.add(key(tile));
+    route.push(tile);
+    for (const next of neighbors(tile)) {
+      if (!next.path || !isTileUnlocked(next) || visited.has(key(next))) continue;
+      walk(next);
+      route.push(tile);
+    }
+  };
+  walk(start);
+  return route;
+}
+
+function drawGarbageTrucks() {
+  const route = sanitationRoute();
+  for (const truck of state.garbageTrucks) {
+    const segment = transitVehicleSegment(truck, route);
+    if (!segment) continue;
+    const { from, to, progress } = segment;
+    const x = from.x + (to.x - from.x) * progress + .5;
+    const y = from.y + (to.y - from.y) * progress + .5;
+    const p = iso(x, y, 10);
+    drawGarbageTruck(p.x, p.y, to.x - from.x, to.y - from.y, truck);
+  }
+}
+
+function drawGarbageTruck(x, y, dx, dy, truck = {}) {
+  const z = camera.zoom;
+  const horizontal = Math.abs(dx) >= Math.abs(dy);
+  ctx.save();
+  ctx.translate(x, y + 7 * z);
+  drawSoftShadow(0, 8 * z, 18 * z, 5 * z, .22);
+  ctx.fillStyle = "#49abc2";
+  roundRect(-18 * z, -10 * z, 24 * z, 17 * z, 4 * z);
+  ctx.fill();
+  ctx.fillStyle = "#fff7df";
+  roundRect(5 * z, -8 * z, 14 * z, 15 * z, 4 * z);
+  ctx.fill();
+  ctx.fillStyle = "#9bcf67";
+  ctx.fillRect(-14 * z, -6 * z, 15 * z, 3 * z);
+  ctx.fillStyle = "#26313f";
+  ctx.beginPath();
+  ctx.arc(-10 * z, 7 * z, 3 * z, 0, Math.PI * 2);
+  ctx.arc(11 * z, 7 * z, 3 * z, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#ef6f61";
+  ctx.fillRect(horizontal ? -18 * z : 14 * z, -1 * z, 4 * z, 4 * z);
+  if (Number(truck.lastCollected || 0) > 0) drawRideStatusBadge(`+${Math.ceil(truck.lastCollected)}`, 7 * z, -25 * z, "#317f69");
+  ctx.restore();
 }
 
 function drawMonorails() {
@@ -3402,11 +3480,91 @@ function updateAnalysisSignals(dt) {
   }
 }
 
+function syncGarbageTrucks(route = sanitationRoute()) {
+  const count = clamp(Math.round(Number(state.sanitation.vehicles || 0)), 0, SANITATION_CONFIG.maxVehicles);
+  const signature = route.map(tile => key(tile)).join("|");
+  if (state.garbageTrucks.length === count && state.garbageTrucks.every(truck => truck.routeSignature === signature)) return;
+  const previous = state.garbageTrucks;
+  state.garbageTrucks = Array.from({ length: count }, (_, index) => ({
+    id: `garbage-truck-${index + 1}`,
+    distance: Number(previous[index]?.distance ?? route.length * index / Math.max(1, count)),
+    lastRouteIndex: -1,
+    lastCollected: 0,
+    routeSignature: signature
+  }));
+}
+
+function collectGarbageAt(tile) {
+  if (!tile) return 0;
+  let collected = 0;
+  for (const target of [tile, ...neighbors(tile)]) {
+    const litter = Math.max(0, Number(target.litter || 0));
+    if (litter > 0) {
+      collected += litter;
+      target.litter = 0;
+    }
+    if (target.object?.type === "trash_bin") {
+      const fill = Math.max(0, Number(target.object.fill || 0));
+      if (fill > 0) {
+        collected += fill;
+        target.object.fill = 0;
+        target.object.collected = Math.max(0, Number(target.object.collected || 0)) + fill;
+      }
+    }
+  }
+  if (collected > 0) {
+    state.sanitation.totalCollected = Math.max(0, Number(state.sanitation.totalCollected || 0)) + collected;
+    state.clean = clamp(state.clean + Math.min(2.5, collected * .12), 20, 100);
+  }
+  return collected;
+}
+
+function updateGarbageTrucks(dt) {
+  const route = sanitationRoute();
+  syncGarbageTrucks(route);
+  if (route.length < 2) return;
+  for (const truck of state.garbageTrucks) {
+    truck.distance = (Number(truck.distance || 0) + dt * SANITATION_CONFIG.speed) % route.length;
+    truck.lastCollected = Math.max(0, Number(truck.lastCollected || 0) - dt * 2);
+    const routeIndex = Math.floor(truck.distance) % route.length;
+    if (routeIndex === truck.lastRouteIndex) continue;
+    truck.lastRouteIndex = routeIndex;
+    truck.lastCollected = collectGarbageAt(route[routeIndex]);
+  }
+}
+
+function adjustGarbageTruckFleet(delta) {
+  const current = clamp(Math.round(Number(state.sanitation.vehicles || 0)), 0, SANITATION_CONFIG.maxVehicles);
+  const next = clamp(current + delta, 0, SANITATION_CONFIG.maxVehicles);
+  if (next === current) return false;
+  if (delta > 0) {
+    if (state.money < SANITATION_CONFIG.vehicleCost) {
+      toast("ゴミ収集車の購入資金が足りません");
+      return false;
+    }
+    state.money -= SANITATION_CONFIG.vehicleCost;
+    state.finance.maintenanceExpenses += SANITATION_CONFIG.vehicleCost;
+    toast("ゴミ収集車を配備しました");
+  } else {
+    state.money += SANITATION_CONFIG.vehicleRefund;
+    toast(`ゴミ収集車を売却しました　+$${SANITATION_CONFIG.vehicleRefund}`);
+  }
+  state.sanitation.vehicles = next;
+  syncGarbageTrucks();
+  computeStats();
+  return true;
+}
+
 function update(dt) {
   if (paused || titleScreenActive) return;
   spawnTimer += dt;
   incomeTimer += dt;
   expenseTimer += dt;
+  assistanceTimer += dt;
+  if (assistanceTimer >= 8) {
+    assistanceTimer = 0;
+    runManagementAssistance();
+  }
   const attraction = state.rides.reduce((sum, r) => sum + (seasonalRideAvailable(r.type) ? tools[r.type].appeal : 0), 0);
   const transitStops = busStops().length;
   const admissionPressure = Math.max(0, state.admissionFee - 25) * .045;
@@ -3422,6 +3580,7 @@ function update(dt) {
   updateBuses(dt);
   updateMonorails(dt);
   updateParkTrains(dt);
+  updateGarbageTrucks(dt);
   updateShops(dt);
   for (const ride of state.rides) updateRide(ride, dt);
   updateStaffAgents(dt);
@@ -3433,8 +3592,9 @@ function update(dt) {
     const cleanerCoverage = staffTeam("cleaner")
       .filter(agent => agent.state !== "resting")
       .reduce((sum, agent) => sum + staffEfficiency(agent), 0);
+    const cleanlinessLoad = (state.guests.length * .075 + looseLitter * .04) * difficultyConfig().cleanlinessMultiplier;
     state.clean = clamp(
-      state.clean - state.guests.length * .075 - looseLitter * .04 + sceneryScore() * .002 + cleanerCoverage * .65,
+      state.clean - cleanlinessLoad + sceneryScore() * .002 + cleanerCoverage * .65 + state.sanitation.vehicles * .16,
       20,
       100
     );
@@ -3458,6 +3618,7 @@ function operatingCostBreakdown() {
     return sum + (tool?.amenity ? Number(tool.upkeep || 0) : 0);
   }, 0);
   const baseMaintenance = rideMaintenance + amenityMaintenance;
+  const baseSanitation = state.sanitation.vehicles * SANITATION_CONFIG.vehicleUpkeep;
   const baseParkStaff = parkStaffWageTotal();
   const baseShopStaff = shopTiles().reduce((sum, tile) => {
     const shop = tile.object;
@@ -3481,17 +3642,18 @@ function operatingCostBreakdown() {
     + (parkTrainRunning ? parkTrainNetwork.fleet * parkTrainConfig.vehicleUpkeep : 0);
   const baseTransit = busStops().length * 6 + busNetwork.fleet * busConfig.vehicleUpkeep + frequencyPremium + monorail + parkTrain;
   const factor = difficultyCostFactor();
-  const maintenance = baseMaintenance * factor;
+  const maintenance = (baseMaintenance + baseSanitation) * factor;
   const staff = baseStaff * factor;
   const transit = baseTransit * factor;
   return {
     maintenance,
+    sanitation: baseSanitation * factor,
     staff,
     parkStaff: baseParkStaff * factor,
     shopStaff: baseShopStaff * factor,
     transit,
     factor,
-    baseTotal: Math.round(baseMaintenance + baseStaff + baseTransit),
+    baseTotal: Math.round(baseMaintenance + baseSanitation + baseStaff + baseTransit),
     total: Math.round(maintenance + staff + transit)
   };
 }
@@ -5006,6 +5168,8 @@ function saveGame() {
     guestLog: state.guestLog,
     staff: { ...state.staff },
     staffStats: { ...state.staffStats },
+    sanitation: { ...state.sanitation },
+    assistance: { ...state.assistance },
     staffRoster: state.staffAgents.map(agent => ({
       id: agent.id,
       role: agent.role,
@@ -5159,6 +5323,16 @@ function loadGame() {
       cleaningJobs: Math.max(0, Number(save.staffStats?.cleaningJobs) || 0),
       repairJobs: Math.max(0, Number(save.staffStats?.repairJobs) || 0)
     };
+    state.sanitation = {
+      vehicles: clamp(Math.round(Number(save.sanitation?.vehicles ?? difficultyConfig().starterGarbageTrucks)), 0, SANITATION_CONFIG.maxVehicles),
+      totalCollected: Math.max(0, Number(save.sanitation?.totalCollected) || 0)
+    };
+    state.assistance = {
+      shops: state.difficulty !== "challenge" && !!save.assistance?.shops,
+      rides: state.difficulty !== "challenge" && !!save.assistance?.rides,
+      satisfaction: state.difficulty !== "challenge" && !!save.assistance?.satisfaction,
+      adjustments: Math.max(0, Number(save.assistance?.adjustments) || 0)
+    };
     staffSequence = 0;
     state.staffAgents = [];
     const savedRoster = Array.isArray(save.staffRoster) ? save.staffRoster : [];
@@ -5173,9 +5347,11 @@ function loadGame() {
     state.buses = [];
     state.monorails = [];
     state.parkTrains = [];
+    state.garbageTrucks = [];
     spawnTimer = 0;
     incomeTimer = 0;
     expenseTimer = 0;
+    assistanceTimer = 0;
     stopSequence = 0;
     save.tiles.forEach((savedTile, index) => {
       const tile = state.tiles[index];
@@ -5269,6 +5445,9 @@ function computeStats() {
   renderSeasonalEventPanel();
   ui.cleanerCount.textContent = state.staff.cleaners;
   ui.mechanicCount.textContent = state.staff.mechanics;
+  ui.garbageTruckCount.textContent = state.sanitation.vehicles;
+  ui.garbageTruckMinus.disabled = state.sanitation.vehicles <= 0;
+  ui.garbageTruckPlus.disabled = state.sanitation.vehicles >= SANITATION_CONFIG.maxVehicles || state.money < SANITATION_CONFIG.vehicleCost;
   const cleanerTeamStats = staffTeamStats("cleaner");
   const mechanicTeamStats = staffTeamStats("mechanic");
   const cleanerTrainingCost = staffTrainingCost("cleaner");
@@ -5378,6 +5557,8 @@ function computeStats() {
   }
   ui.financeHint.textContent = financeHint;
   ui.financeHint.classList.toggle("warning", financeWarning);
+  renderManagementAssistance();
+  renderProfitRecovery();
   renderAnalysisPanel();
   renderMarketingPanel();
   renderDevelopmentPanel();
@@ -5400,6 +5581,7 @@ function computeStats() {
   ui.benchUses.textContent = Math.floor(amenities.filter(object => object.type === "bench").reduce((sum, object) => sum + Number(object.usage || 0), 0));
   ui.toiletUses.textContent = Math.floor(amenities.filter(object => object.type === "toilet").reduce((sum, object) => sum + Number(object.usage || 0), 0));
   ui.binCollected.textContent = Math.floor(amenities.filter(object => object.type === "trash_bin").reduce((sum, object) => sum + Number(object.collected || 0), 0));
+  ui.garbageTruckCollected.textContent = Math.floor(state.sanitation.totalCollected);
   ui.growthBar.style.width = `${clamp((rides * 16 + transit * 7 + served * .22), 4, 100)}%`;
   ui.loadBar.style.width = `${clamp(queue * 8 + state.guests.length * 2, 5, 100)}%`;
   ui.sceneBar.style.width = `${clamp(scene * 2, 7, 100)}%`;
@@ -5508,6 +5690,207 @@ function renderMarketingPanel() {
   ui.marketingHint.textContent = active ? marketingFitHint(active.type) : "客層を選んで集客を始めましょう。";
   ui.marketingHint.classList.toggle("warning", !!active && marketingFit(active.type) < 50);
   ui.marketingCancel.disabled = !active;
+}
+
+function managementAssistanceAllowed() {
+  return state.difficulty !== "challenge";
+}
+
+function setAssistanceStaff(role, desired) {
+  const stateKey = role === "cleaner" ? "cleaners" : "mechanics";
+  const current = Number(state.staff[stateKey] || 0);
+  const next = clamp(Math.round(desired), 0, 12);
+  if (current === next) return false;
+  if (next > current) {
+    const cost = role === "cleaner" ? 250 : 350;
+    if (state.money < cost + operatingCost() * 3) return false;
+    state.money -= cost;
+    state.finance.staffExpenses += cost;
+  }
+  state.staff[stateKey] = current + Math.sign(next - current);
+  syncStaffAgents();
+  return true;
+}
+
+function runShopAssistance() {
+  let adjusted = 0;
+  for (const tile of shopTiles()) {
+    const shop = tile.object;
+    const recommended = shopRecommendedPrice(shop);
+    if (Number(shop.price) !== recommended) {
+      shop.price = recommended;
+      adjusted++;
+    }
+    if (!shop.autoRestock) {
+      shop.autoRestock = true;
+      adjusted++;
+    }
+    if (shop.open === false) {
+      shop.open = true;
+      adjusted++;
+    }
+    const interest = Number(shop.recentInterest || 0);
+    const desiredStaff = interest >= 10 ? 3 : interest >= 4 ? 2 : 1;
+    const currentStaff = Number(shop.staff || 1);
+    if (desiredStaff < currentStaff) {
+      shop.staff = currentStaff - 1;
+      adjusted++;
+    } else if (desiredStaff > currentStaff && state.money >= SHOP_MANAGEMENT_CONFIG.hireCost + operatingCost() * 3) {
+      state.money -= SHOP_MANAGEMENT_CONFIG.hireCost;
+      state.finance.staffExpenses += SHOP_MANAGEMENT_CONFIG.hireCost;
+      shop.staff = currentStaff + 1;
+      adjusted++;
+    }
+    if (Number(shop.pendingStock || 0) <= 0 && Number(shop.stock || 0) <= shopReorderPoint(shop)) {
+      if (placeShopOrder(shop, { silent: true })) adjusted++;
+    }
+  }
+  return adjusted;
+}
+
+function runRideAssistance() {
+  const revenue = state.finance.admissionRevenue + state.finance.rideRevenue + state.finance.shopRevenue;
+  const expenses = state.finance.maintenanceExpenses + state.finance.staffExpenses + state.finance.restockExpenses
+    + state.finance.marketingExpenses + state.finance.eventExpenses;
+  const reduceOperation = expenses > revenue && expenses > 0 && state.rides.length > 2;
+  const neededRides = Math.max(2, Math.ceil(Math.max(8, state.guests.length) / 8));
+  const ranked = [...state.rides].sort((a, b) => {
+    const score = ride => Number(ride.popularity || 0) + Number(tools[ride.type]?.appeal || 0) + ride.queue.length * 8 + ride.riders.length * 5;
+    return score(b) - score(a);
+  });
+  let adjusted = 0;
+  ranked.forEach((ride, index) => {
+    const fairPrice = clamp(Number(tools[ride.type].defaultPrice || 0) + Number(ride.level || 1) - 1, 0, 30);
+    if (Number(ride.price) !== fairPrice) {
+      ride.price = fairPrice;
+      adjusted++;
+    }
+    const desiredPolicy = Number(ride.condition ?? 100) < 72 ? "preventive" : "balanced";
+    if (ride.maintenancePolicy !== desiredPolicy) {
+      ride.maintenancePolicy = desiredPolicy;
+      adjusted++;
+    }
+    const shouldOpen = !reduceOperation || index < neededRides || ride.queue.length > 0 || ride.riders.length > 0;
+    if (ride.open !== shouldOpen) {
+      ride.open = shouldOpen;
+      adjusted++;
+    }
+  });
+  return adjusted;
+}
+
+function runSatisfactionAssistance() {
+  const litter = state.tiles.reduce((sum, tile) => sum + Number(tile.litter || 0), 0);
+  const broken = state.rides.filter(ride => ride.broken).length;
+  const desiredCleaners = state.clean < 72 || litter > 3 ? 2 : state.guests.length > 28 ? 2 : 1;
+  const desiredMechanics = broken >= 2 ? 2 : state.rides.length >= 7 ? 2 : 1;
+  let adjusted = 0;
+  if (setAssistanceStaff("cleaner", desiredCleaners)) adjusted++;
+  if (setAssistanceStaff("mechanic", desiredMechanics)) adjusted++;
+  if (state.clean < 70 && state.sanitation.vehicles < 1 && state.money >= SANITATION_CONFIG.vehicleCost + operatingCost() * 4) {
+    state.money -= SANITATION_CONFIG.vehicleCost;
+    state.finance.maintenanceExpenses += SANITATION_CONFIG.vehicleCost;
+    state.sanitation.vehicles = 1;
+    syncGarbageTrucks();
+    adjusted++;
+  }
+  if (state.happy < 72 && state.admissionFee > 20) {
+    state.admissionFee = Math.max(20, state.admissionFee - 2);
+    adjusted++;
+  }
+  return adjusted;
+}
+
+function runManagementAssistance() {
+  if (!managementAssistanceAllowed()) return 0;
+  let adjusted = 0;
+  if (state.assistance.shops) adjusted += runShopAssistance();
+  if (state.assistance.rides) adjusted += runRideAssistance();
+  if (state.assistance.satisfaction) adjusted += runSatisfactionAssistance();
+  state.assistance.adjustments = Math.max(0, Number(state.assistance.adjustments || 0)) + adjusted;
+  return adjusted;
+}
+
+function toggleManagementAssistance(kind) {
+  if (!["shops", "rides", "satisfaction"].includes(kind)) return false;
+  if (!managementAssistanceAllowed()) {
+    toast("上級ではおまかせ運営を利用できません");
+    return false;
+  }
+  state.assistance[kind] = !state.assistance[kind];
+  if (state.assistance[kind]) runManagementAssistance();
+  computeStats();
+  const labels = { shops: "売店", rides: "遊具", satisfaction: "満足度" };
+  toast(`${labels[kind]}のおまかせを${state.assistance[kind] ? "オン" : "オフ"}にしました`);
+  return true;
+}
+
+function renderManagementAssistance() {
+  const allowed = managementAssistanceAllowed();
+  const entries = [
+    ["shops", ui.autoShopBtn],
+    ["rides", ui.autoRideBtn],
+    ["satisfaction", ui.autoSatisfactionBtn]
+  ];
+  let active = 0;
+  for (const [kind, button] of entries) {
+    const enabled = allowed && !!state.assistance[kind];
+    if (enabled) active++;
+    button.classList.toggle("active", enabled);
+    button.setAttribute("aria-pressed", enabled ? "true" : "false");
+    button.disabled = !allowed;
+  }
+  ui.assistanceStatus.textContent = allowed ? active ? `${active}項目 ON` : "すべて手動" : "上級は手動経営";
+  ui.assistanceHint.textContent = allowed
+    ? active
+      ? `8秒ごとに再評価・累計${Math.floor(state.assistance.adjustments)}件を調整`
+      : "必要な項目だけオンにできます。"
+    : "利益率を自分で設計する上級では自動調整は停止します。";
+}
+
+function profitRecoveryAdvice() {
+  const finance = state.finance;
+  const revenue = Number(finance.admissionRevenue || 0) + Number(finance.rideRevenue || 0) + Number(finance.shopRevenue || 0);
+  const expenses = Number(finance.maintenanceExpenses || 0) + Number(finance.staffExpenses || 0) + Number(finance.restockExpenses || 0)
+    + Number(finance.marketingExpenses || 0) + Number(finance.eventExpenses || 0);
+  const net = revenue - expenses;
+  const cost = operatingCost();
+  if (expenses <= 0) {
+    return { status: "stable", label: "収支を観測中", cause: `次回の定期精算は約$${cost.toLocaleString()}です。`, actions: ["入園料を$20〜30に保ち、ゲストの最初の売上を待つ"] };
+  }
+  if (net >= 0) {
+    return { status: "stable", label: `黒字 +$${Math.round(net).toLocaleString()}`, cause: "現在のラウンド収支は黒字です。", actions: ["定期精算5回分の資金を残してから次の建設を行う"] };
+  }
+  const leaders = [
+    ["維持・交通費", Number(finance.maintenanceExpenses || 0)],
+    ["スタッフ費", Number(finance.staffExpenses || 0)],
+    ["仕入れ費", Number(finance.restockExpenses || 0)],
+    ["広告費", Number(finance.marketingExpenses || 0)],
+    ["イベント費", Number(finance.eventExpenses || 0)]
+  ].sort((a, b) => b[1] - a[1]);
+  const actions = [];
+  if (revenue <= cost * .5) actions.push("入園料を$20〜30に設定し、入口から営業中ライドまでの通路を確認");
+  if (leaders[0][0] === "維持・交通費") actions.push("遊具おまかせをONにして、低人気ライドを休業し維持費を削減");
+  if (leaders[0][0] === "スタッフ費") actions.push("待機中の清掃員・整備員・売店店員を1人ずつ減らす");
+  if (leaders[0][0] === "仕入れ費" || shopPricingIssues().length) actions.push("売店おまかせをONにして価格と発注量を需要に合わせる");
+  if (state.clean < 75) actions.push("ゴミ収集車を配備し、満杯のごみ箱と散乱ごみを回収する");
+  if (state.rides.some(ride => ride.broken)) actions.push("整備員を確保し、故障ライドの売上停止を解消する");
+  if (!actions.length) actions.push("新規建設と広告を止め、現在の設備で1ラウンド売上を積み上げる");
+  actions.push(`黒字化にはあと$${Math.ceil(-net).toLocaleString()}の売上増または支出削減が必要`);
+  return {
+    status: state.money < cost * 3 || net < -cost ? "danger" : "warning",
+    label: `赤字 -$${Math.round(-net).toLocaleString()}`,
+    cause: `最大支出は${leaders[0][0]} $${Math.round(leaders[0][1]).toLocaleString()}です。`,
+    actions: actions.slice(0, 3)
+  };
+}
+
+function renderProfitRecovery() {
+  const advice = profitRecoveryAdvice();
+  ui.profitRecovery.dataset.status = advice.status;
+  ui.recoveryStatus.textContent = advice.label;
+  ui.recoveryCause.textContent = advice.cause;
+  ui.recoveryActions.innerHTML = advice.actions.map((action, index) => `<p><b>${index + 1}</b>${action}</p>`).join("");
 }
 
 function renderTransitPanel() {
@@ -6194,7 +6577,7 @@ applyHeroSelection(selectedHero, true);
 const TUTORIAL_STEPS = [
   {
     title: "ようこそ、園長さん",
-    body: `<p>タイトル画面で選んだ難易度を確認できます。初めてなら <strong>「初級」</strong> がおすすめです。建設費と運営費が安く、最初の6ラウンドはさらに強い補助があります。</p><p class="tutorial-tip">普通は平均的な基準、上級は稼働率・仕入れ・維持費から利益率を組み立てる本格経営です。</p>`
+    body: `<p>タイトル画面で選んだ難易度を確認できます。初めてなら <strong>「初級」</strong> がおすすめです。建設費と運営費が安く、最初の8ラウンドはさらに強い補助があります。</p><p class="tutorial-tip">初級はゴミ収集車1台から開始。普通は平均的な基準、上級は稼働率・仕入れ・維持費から利益率を組み立てる本格経営です。</p>`
   },
   {
     title: "最初は建てすぎない",
@@ -6221,7 +6604,15 @@ function setDifficulty(mode, options = {}) {
   if (options.adjustFunds !== false && pristine) {
     state.money = DIFFICULTY_CONFIGS[mode].initialMoney;
     for (const tile of shopTiles()) tile.object = createShop(tile.object.type);
+    state.sanitation.vehicles = DIFFICULTY_CONFIGS[mode].starterGarbageTrucks;
+    state.garbageTrucks = [];
   }
+  if (mode === "challenge") {
+    state.assistance.shops = false;
+    state.assistance.rides = false;
+    state.assistance.satisfaction = false;
+  }
+  assistanceTimer = 0;
   if (options.persist !== false) localStorage.setItem("parkDifficulty", mode);
   renderTutorial();
   computeStats();
@@ -6928,6 +7319,8 @@ ui.cleanerMinus.addEventListener("click", () => adjustStaff("cleaners", -1));
 ui.cleanerPlus.addEventListener("click", () => adjustStaff("cleaners", 1));
 ui.mechanicMinus.addEventListener("click", () => adjustStaff("mechanics", -1));
 ui.mechanicPlus.addEventListener("click", () => adjustStaff("mechanics", 1));
+ui.garbageTruckMinus.addEventListener("click", () => adjustGarbageTruckFleet(-1));
+ui.garbageTruckPlus.addEventListener("click", () => adjustGarbageTruckFleet(1));
 ui.cleanerTraining.addEventListener("click", () => trainStaff("cleaner"));
 ui.mechanicTraining.addEventListener("click", () => trainStaff("mechanic"));
 ui.busMinus.addEventListener("click", () => adjustBusFleet(-1));
@@ -6945,6 +7338,9 @@ ui.mascotInvestBtn.addEventListener("click", investInMascot);
 ui.celebrityCampaignBtn.addEventListener("click", startCelebrityCampaign);
 ui.disasterRecoveryBtn.addEventListener("click", emergencyDisasterRecovery);
 ui.shopPricingAction.addEventListener("click", focusHighestPricedShop);
+ui.autoShopBtn.addEventListener("click", () => toggleManagementAssistance("shops"));
+ui.autoRideBtn.addEventListener("click", () => toggleManagementAssistance("rides"));
+ui.autoSatisfactionBtn.addEventListener("click", () => toggleManagementAssistance("satisfaction"));
 ui.shopDemandForecast.addEventListener("click", event => {
   const kind = event.target.closest("[data-shop-demand-kind]")?.dataset.shopDemandKind;
   if (kind) handleShopDemandAction(kind);
@@ -7015,6 +7411,8 @@ const preferredDifficulty = localStorage.getItem("parkDifficulty");
 if (DIFFICULTY_CONFIGS[preferredDifficulty] && preferredDifficulty !== state.difficulty) {
   state.difficulty = preferredDifficulty;
   state.money = difficultyConfig().initialMoney;
+  state.sanitation.vehicles = difficultyConfig().starterGarbageTrucks;
+  state.garbageTrucks = [];
   for (const tile of shopTiles()) tile.object = createShop(tile.object.type);
 }
 renderDifficultySelection();
@@ -7114,6 +7512,15 @@ window.parkDebug = {
       costFactor: difficultyCostFactor(),
       sentiment: Number(state.sentiment.toFixed(1)),
       finance: { ...state.finance },
+      garbageTrucks: state.garbageTrucks.length,
+      garbageTruckFleet: state.sanitation.vehicles,
+      garbageCollected: Math.floor(state.sanitation.totalCollected),
+      assistance: {
+        shops: state.assistance.shops,
+        rides: state.assistance.rides,
+        satisfaction: state.assistance.satisfaction
+      },
+      assistanceAdjustments: Math.floor(state.assistance.adjustments),
       buses: state.buses.length,
       busStops: busStops().length,
       busFleet: transitNetwork("bus").fleet,
@@ -7220,6 +7627,20 @@ window.parkDebug = {
   advanceSeasonalEvents,
   renderSeasonalEventPanel,
   renderMarketingPanel,
+  sanitationRoute,
+  syncGarbageTrucks,
+  collectGarbageAt,
+  updateGarbageTrucks,
+  adjustGarbageTruckFleet,
+  managementAssistanceAllowed,
+  runShopAssistance,
+  runRideAssistance,
+  runSatisfactionAssistance,
+  runManagementAssistance,
+  toggleManagementAssistance,
+  renderManagementAssistance,
+  profitRecoveryAdvice,
+  renderProfitRecovery,
   setAnalysisMode,
   getAnalysisMetrics,
   renderAnalysisPanel,
