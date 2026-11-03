@@ -48,7 +48,7 @@ element("game").getContext = () => context2d;
 
 const toolNames = [
   "inspect", "path", "remove", "bus_stop", "monorail_track", "monorail_station", "train_track", "train_station", "carousel", "wheel", "coaster",
-  "teacups", "flower_swing", "splash_boats", "harvest_spin", "aurora_tower", "kiosk", "drink_stand", "souvenir_shop", "bench", "trash_bin", "toilet", "tree", "shrub", "flower", "palm", "cherry_tree", "sunflower_garden", "maple_tree", "christmas_tree", "water", "decor"
+  "teacups", "flower_swing", "splash_boats", "swan_boat", "water_slide", "harvest_spin", "aurora_tower", "kiosk", "drink_stand", "souvenir_shop", "bench", "trash_bin", "toilet", "tree", "shrub", "flower", "palm", "cherry_tree", "sunflower_garden", "maple_tree", "christmas_tree", "water", "decor"
 ];
 const toolButtons = new Map(toolNames.map(name => {
   const button = new MockElement();
@@ -251,6 +251,21 @@ assert.equal(state.sanitation.totalCollected, 7, "sanitation progress should sur
 state.assistance.shops = false;
 assert.equal(debug.seasonForRound(1), "spring");
 assert.equal(debug.seasonForRound(4), "summer");
+assert.equal(debug.seasonalRideAvailable("swan_boat"), true);
+assert.equal(debug.seasonalRideAvailable("water_slide"), false);
+const waterTestTile = state.tiles.find(tile => tile.x === 7 && tile.y === 15);
+const waterTestNeighbor = state.tiles.find(tile => tile.x === 6 && tile.y === 15);
+const previousWaterTerrain = waterTestNeighbor.terrain;
+waterTestNeighbor.terrain = "grass";
+assert.equal(debug.getPlacementStatus(waterTestTile, "swan_boat").valid, false);
+waterTestNeighbor.terrain = "water";
+assert.equal(debug.getPlacementStatus(waterTestTile, "swan_boat").valid, true);
+const savedRoundForWaterRide = state.round;
+state.round = 4;
+assert.equal(debug.seasonalRideAvailable("water_slide"), true, "the slide should operate in summer without an event");
+assert.equal(debug.getPlacementStatus(waterTestTile, "water_slide").valid, true);
+state.round = savedRoundForWaterRide;
+waterTestNeighbor.terrain = previousWaterTerrain;
 assert.equal(debug.seasonForRound(7), "autumn");
 assert.equal(debug.seasonForRound(10), "winter");
 assert.equal(debug.seasonalRideAvailable("flower_swing"), false);

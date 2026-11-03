@@ -514,6 +514,8 @@ const tools = {
   teacups: { cost: 1400, label: "ティーカップ", ride: true, cap: 6, duration: 7, appeal: 15, upkeep: 14, defaultPrice: 6, color: "#9bcf67" },
   flower_swing: { cost: 2600, label: "桜スイング", ride: true, cap: 8, duration: 8, appeal: 25, upkeep: 24, defaultPrice: 9, color: "#e98fa8", limitedSeason: "spring" },
   splash_boats: { cost: 3100, label: "スプラッシュボート", ride: true, cap: 10, duration: 9, appeal: 29, upkeep: 31, defaultPrice: 11, color: "#36a8c8", limitedSeason: "summer" },
+  swan_boat: { cost: 2200, label: "スワンボート", ride: true, cap: 8, duration: 10, appeal: 23, upkeep: 19, defaultPrice: 8, color: "#70c5d2", waterfront: true },
+  water_slide: { cost: 3400, label: "ウォータースライダー", ride: true, cap: 10, duration: 8, appeal: 33, upkeep: 30, defaultPrice: 11, color: "#ef6f61", waterfront: true, limitedSeason: "summer", seasonOnly: true },
   harvest_spin: { cost: 2800, label: "ハーベストスピン", ride: true, cap: 8, duration: 8, appeal: 27, upkeep: 25, defaultPrice: 10, color: "#d88a32", limitedSeason: "autumn" },
   aurora_tower: { cost: 3600, label: "オーロラタワー", ride: true, cap: 12, duration: 11, appeal: 33, upkeep: 36, defaultPrice: 12, color: "#796dc0", limitedSeason: "winter" },
   kiosk: { cost: 900, label: "スナック売店", shop: true, shopKind: "food", defaultPrice: 7, unitCost: 3, instantUnitCost: 4, deliverySize: 30, capacityScale: 1, staffWage: 18 },
@@ -1658,6 +1660,28 @@ function drawRide(type, p, ride) {
       const x = (-12 + i * 12) * z;
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.quadraticCurveTo(x + 5 * z, -22 * z, x + 10 * z, 0); ctx.stroke();
     }
+  } else if (type === "swan_boat") {
+    drawCylinder(0, 12 * z, 33 * z, 11 * z, "#84d9df", "#4097aa");
+    for (let i = 0; i < 3; i++) {
+      const a = t * .7 + i * Math.PI * 2 / 3;
+      const x = Math.cos(a) * 20 * z;
+      const y = (3 + Math.sin(a) * 7) * z;
+      ctx.fillStyle = "#fffaf0";
+      ctx.beginPath(); ctx.ellipse(x, y, 9 * z, 5 * z, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "#fffaf0"; ctx.lineWidth = 4 * z;
+      ctx.beginPath(); ctx.moveTo(x + 6 * z, y); ctx.quadraticCurveTo(x + 10 * z, y - 12 * z, x + 5 * z, y - 11 * z); ctx.stroke();
+      ctx.fillStyle = "#ef9b42"; ctx.fillRect(x + 7 * z, y - 12 * z, 4 * z, 2 * z);
+    }
+  } else if (type === "water_slide") {
+    drawCylinder(0, 13 * z, 32 * z, 11 * z, "#8adce3", "#4097aa");
+    ctx.strokeStyle = "#455b66"; ctx.lineWidth = 3 * z;
+    ctx.beginPath(); ctx.moveTo(-18 * z, 8 * z); ctx.lineTo(-18 * z, -43 * z); ctx.lineTo(8 * z, -43 * z); ctx.lineTo(8 * z, 8 * z); ctx.stroke();
+    ctx.strokeStyle = "#f16f66"; ctx.lineWidth = 10 * z;
+    ctx.beginPath(); ctx.moveTo(-17 * z, -40 * z); ctx.bezierCurveTo(23 * z, -49 * z, -8 * z, -8 * z, 21 * z, 3 * z); ctx.stroke();
+    ctx.strokeStyle = "#fff4d8"; ctx.lineWidth = 2 * z; ctx.stroke();
+    const splashX = (20 + Math.sin(t * 3) * 3) * z;
+    ctx.fillStyle = "#e5fbff"; ctx.beginPath(); ctx.arc(splashX, 3 * z, 3 * z, 0, Math.PI * 2); ctx.fill();
+    drawFlag(-18 * z, -48 * z, "#f1b84f", -1);
   } else if (type === "harvest_spin") {
     drawCylinder(0, 13 * z, 32 * z, 11 * z, "#fff2cf", "#8eb15c");
     for (let i = 0; i < 5; i++) {
@@ -3153,7 +3177,7 @@ function activeCrowdEvent() {
 
 function seasonalRideAvailable(type) {
   const season = tools[type]?.limitedSeason;
-  return !season || !!activeSeasonalEvent() && season === seasonForRound();
+  return !season || season === seasonForRound() && (tools[type]?.seasonOnly || !!activeSeasonalEvent());
 }
 
 function seasonalArrivalInterval(baseInterval) {
@@ -5062,7 +5086,7 @@ function updateToolLocks() {
     button.title = progressionLocked
       ? `評価${requiredStars}で解禁`
       : seasonLocked
-        ? `${seasonal.seasonLabel}・${seasonal.label}開催中のみ建設できます`
+        ? tools[toolName]?.seasonOnly ? `${seasonal.seasonLabel}のみ建設できます` : `${seasonal.seasonLabel}・${seasonal.label}開催中のみ建設できます`
         : button.dataset.baseTitle;
   });
 }
@@ -6020,9 +6044,15 @@ function getPlacementStatus(tile, toolName = selectedTool) {
   if (!isToolUnlocked(toolName)) return { valid: false, reason: `パーク評価${TOOL_UNLOCK_STARS[toolName]}で解禁されます` };
   if (!seasonalRideAvailable(toolName)) {
     const event = SEASONAL_EVENTS[tool.limitedSeason];
-    return { valid: false, reason: `${event.seasonLabel}の${event.label}開催中のみ建設できます` };
+    return { valid: false, reason: tool.seasonOnly ? `${event.seasonLabel}のみ建設できます` : `${event.seasonLabel}の${event.label}開催中のみ建設できます` };
   }
   if (state.money < difficultyBuildCost(tool)) return { valid: false, reason: "資金が足りません" };
+  if (tool.waterfront) {
+    if (tile.object || tile.path || tile.transitTrack || tile.terrain === "water") return { valid: false, reason: "水辺の隣の空いた芝生に置いてください" };
+    if (!neighbors(tile).some(neighbor => neighbor.terrain === "water")) return { valid: false, reason: "水辺の隣に置いてください" };
+    if (!neighbors(tile).some(neighbor => neighbor.path)) return { valid: false, reason: "通路にも隣接させてください" };
+    return { valid: true, reason: "" };
+  }
   if (toolName === "path") {
     const valid = tile.terrain !== "water" && !tile.object && !tile.path;
     return { valid, reason: valid ? "" : "通路には空いた土地が必要です" };
@@ -6328,7 +6358,7 @@ function inspect(tile) {
       const nearbySeasonalPlants = matchingSeasonalPlantsNearRide(tile.object).length;
       const status = tile.object.broken ? "故障中" : !seasonalRideAvailable(tile.object.type) ? "シーズン休止中" : tile.object.open === false ? "運休中" : "営業中";
       const waitLabel = tile.object.broken || tile.object.open === false || !seasonalRideAvailable(tile.object.type) ? "--" : `${wait}秒`;
-      body = `${status}。状態 ${Math.round(tile.object.condition ?? 100)}%、待ち列 ${tile.object.queue.length}人・推定${waitLabel}、乗車中 ${tile.object.riders.length}/${capacity}人、運転回数 ${tile.object.totalRides}回。${seasonal ? ` ${seasonal.seasonLabel}の${seasonal.label}開催中のみ稼働します。周辺の限定植物 ${nearbySeasonalPlants}本。` : ""}`;
+      body = `${status}。状態 ${Math.round(tile.object.condition ?? 100)}%、待ち列 ${tile.object.queue.length}人・推定${waitLabel}、乗車中 ${tile.object.riders.length}/${capacity}人、運転回数 ${tile.object.totalRides}回。${seasonal ? t.seasonOnly ? ` ${seasonal.seasonLabel}のみ稼働します。` : ` ${seasonal.seasonLabel}の${seasonal.label}開催中のみ稼働します。周辺の限定植物 ${nearbySeasonalPlants}本。` : ""}${t.waterfront ? " 水辺と通路に隣接。" : ""}`;
       controls = `<div class="ride-management-grid"><span>レベル<b>Lv.${level}</b></span><span>人気<b>${popularity}</b></span><span>維持費 / 精算<b>$${upkeep}</b></span><span>定員<b>${capacity}人</b></span><span>運転時間<b>${duration.toFixed(1)}秒</b></span><span>整備開始<b>${rideMaintenanceThreshold(tile.object)}%</b></span>${seasonal ? `<span>景観相乗<b>+${plantBonus}</b></span>` : ""}</div><div class="inline-economy"><span>乗車料金</span><div class="stepper"><button data-action="ride-price-down" title="乗車料金を下げる">−</button><b>$${tile.object.price}</b><button data-action="ride-price-up" title="乗車料金を上げる">＋</button></div></div><span class="ride-policy-label">整備方針</span><div class="ride-policy-control">${Object.entries(RIDE_MANAGEMENT_CONFIG.policies).map(([key, policy]) => `<button class="${tile.object.maintenancePolicy === key ? "active" : ""}" data-action="ride-policy" data-policy="${key}">${policy.label}</button>`).join("")}</div><div class="ride-development-actions"><button class="${tile.object.open !== false ? "active" : ""}" data-action="ride-open-toggle">${tile.object.open === false ? "営業を再開" : "運休する"}</button><button data-action="ride-upgrade" ${upgradeCost <= 0 || tile.object.broken ? "disabled" : ""}>${upgradeCost > 0 ? `Lv.${level + 1}改良 $${upgradeCost}` : "改良完了"}</button></div>`;
     }
     else if (t.transit) {
@@ -6554,7 +6584,7 @@ function selectTool(tool, options = {}) {
   }
   if (!seasonalRideAvailable(tool)) {
     const event = SEASONAL_EVENTS[tools[tool].limitedSeason];
-    if (!options.silent) toast(`${tools[tool].label}は${event.seasonLabel}の${event.label}開催中のみ建設できます`);
+    if (!options.silent) toast(tools[tool].seasonOnly ? `${tools[tool].label}は${event.seasonLabel}のみ建設できます` : `${tools[tool].label}は${event.seasonLabel}の${event.label}開催中のみ建設できます`);
     return false;
   }
   selectedTool = tool;
